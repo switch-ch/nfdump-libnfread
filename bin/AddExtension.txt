@@ -1,0 +1,6 @@
+Add extensions:
+===============
+
+1. Add appropriate definitions for new extension in nffile.h
+2. Update extension_descriptor array in nfx.c to reflect the new extension.
+   Increase user index ( 3rd value )
