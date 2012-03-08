@@ -86,9 +86,14 @@ main(int argc, char *argv[])
 	}
 
 	nfread_init(NULL, ".", argv[1]); /* -M basedir -R . */
-	nfread_iterate(dumper);
-	nfread_fini();
 
+	printf("All flows:\n");
+	nfread_iterate(dumper);
+
+	printf("Flows with src or dst port 53:\n");
+	nfread_iterate_filtered(dumper, "port 53");
+
+	nfread_fini();
 	return EXIT_SUCCESS;
 }
 

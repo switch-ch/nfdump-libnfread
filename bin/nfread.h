@@ -104,9 +104,11 @@ typedef int (*nfread_iterate_cb_t)(const master_record_t *nfrec,
 
 /*
  * Iterate over all netflow records, unpack them, and pass them to
- * nfread_iterate_cb_t.
+ * nfread_iterate_cb_t.  The _filtered variant additionally filters the
+ * flows using an nfdump filter expression.
  */
-int nfread_iterate(nfread_iterate_cb_t iteratecb);
+#define nfread_iterate(cb) nfread_iterate_filtered((cb), NULL)
+int nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr);
 
 #endif /* NFREAD_H */
 

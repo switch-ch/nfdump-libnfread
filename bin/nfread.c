@@ -66,6 +66,8 @@
 #include "nfx.h"
 #include "util.h"
 #include "flist.h"
+#include "rbtree.h"
+#include "nftree.h"
 
 #define NFREAD_C
 #include "nfread.h"
@@ -82,8 +84,9 @@ extension_map_list_t extension_map_list;
 #include "nffile_inline.c"
 
 static int
-nfread_iterate_flowrecord(nfread_iterate_cb_t iteratecb,
-                          common_record_t *flow_record)
+nfread_iterate_flowrecord(nfread_iterate_cb_t itercb,
+                          common_record_t *flow_record,
+                          FilterEngine_data_t *fltengine)
 {
 	master_record_t master_record;
 
@@ -97,12 +100,12 @@ nfread_iterate_flowrecord(nfread_iterate_cb_t iteratecb,
 
 	if (flow_record->type != CommonRecordType) {
 		/* unknown flow_record->type */
-		return iteratecb(NULL, NFREAD_ERECTYPE, GetCurrentFilename());
+		return itercb(NULL, NFREAD_ERECTYPE, GetCurrentFilename());
 	}
 
 	if (!extension_map_list.slot[flow_record->ext_map]) {
 		/* unknown flow_record->ext_map */
-		return iteratecb(NULL, NFREAD_ECORRUPT, GetCurrentFilename());
+		return itercb(NULL, NFREAD_ECORRUPT, GetCurrentFilename());
 	}
 
 	ExpandRecord_v2(flow_record,
@@ -110,24 +113,34 @@ nfread_iterate_flowrecord(nfread_iterate_cb_t iteratecb,
 	                &master_record);
 	/* update number of flows matching a given map */
 	extension_map_list.slot[flow_record->ext_map]->ref_count++;
-	return iteratecb(&master_record, NFREAD_SUCCESS, NULL);
+	if (fltengine) {
+		fltengine->nfrecord = (uint64_t *)&master_record;
+		/* XXX is this really ptr to func ptr? */
+		if (!((*fltengine->FilterEngine)(fltengine)))
+			return NFREAD_LOOP_NEXT;
+	}
+
+	return itercb(&master_record, NFREAD_SUCCESS, NULL);
 }
 
 __attribute__((visibility("default")))
 int
-nfread_iterate(nfread_iterate_cb_t iteratecb)
+nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
 {
 	common_record_t *flow_record;
 	nffile_t *nffile;
+	FilterEngine_data_t *fltengine;
 	int i, done, ret, rv;
 
-	/* Get the first file handle */
+	/* get the first file handle */
 	nffile = GetNextFile(NULL, 0, 0);
 	if (!nffile) {
 		LogError("GetNextFile() error in %s line %d: %s\n",
 		         __FILE__, __LINE__, strerror(errno));
 		return -1;
 	}
+
+	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
 
 	done = 0;
 	while (!done) {
@@ -137,9 +150,9 @@ nfread_iterate(nfread_iterate_cb_t iteratecb)
 		switch (ret) {
 			case NF_CORRUPT:
 			case NF_ERROR:
-				rv = iteratecb(NULL, ret == NF_CORRUPT ?
-				               NFREAD_ECORRUPT : NFREAD_ERROR,
-				               GetCurrentFilename());
+				rv = itercb(NULL, ret == NF_CORRUPT ?
+				            NFREAD_ECORRUPT : NFREAD_ERROR,
+				            GetCurrentFilename());
 				if (rv == NFREAD_LOOP_EXIT) {
 					done = 1;
 					continue;
@@ -152,8 +165,8 @@ nfread_iterate(nfread_iterate_cb_t iteratecb)
 					done = 1;
 				} else if (next == NULL) {
 					done = 1;
-					iteratecb(NULL, NFREAD_ERROR,
-					          "unexpected end of list");
+					itercb(NULL, NFREAD_ERROR,
+					       "unexpected end of list");
 				}
 				continue;
 			}
@@ -166,23 +179,26 @@ nfread_iterate(nfread_iterate_cb_t iteratecb)
 
 		if (nffile->block_header->id != DATA_BLOCK_TYPE_2) {
 			/* nffile->block_header->id */
-			rv = iteratecb(NULL, NFREAD_EBLKTYPE,
-			               GetCurrentFilename());
+			rv = itercb(NULL, NFREAD_EBLKTYPE,
+			            GetCurrentFilename());
 			if (rv == NFREAD_LOOP_EXIT)
 				done = 1;
 			continue;
 		}
 
 		flow_record = nffile->buff_ptr;
-		for (i = 0; i < nffile->block_header->NumRecords; i++) {
-
-			rv = nfread_iterate_flowrecord(iteratecb, flow_record);
+		for (i = 0;
+		     i < nffile->block_header->NumRecords && !done;
+		     i++) {
+			rv = nfread_iterate_flowrecord(itercb, flow_record,
+			                               fltengine);
 			if (rv == NFREAD_LOOP_EXIT) {
 				done = 1;
 				continue;
 			}
-			flow_record = (common_record_t *)((pointer_addr_t)
-			              flow_record + flow_record->size);
+			flow_record = (common_record_t *)(
+			               ((pointer_addr_t)flow_record)
+			               + flow_record->size);
 		}
 	}
 

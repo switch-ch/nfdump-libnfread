@@ -94,7 +94,7 @@ nfreader_SOURCES = nfreader.c \
 
 libnfread_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden
 libnfread_la_SOURCES = nfread.c nfread.h \
-	$(util) $(filelzo) $(nflist)
+	$(util) $(filelzo) $(nflist) $(filter) $(common)
 
 nfanon_SOURCES = nfanon.c \
 	$(util) $(filelzo) $(nflist) $(anon)
