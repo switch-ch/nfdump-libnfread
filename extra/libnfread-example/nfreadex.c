@@ -9,16 +9,19 @@
 #include <unistd.h>
 #include <string.h>
 #include <time.h>
+#include <assert.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 static int
-dumper(const master_record_t *nfrec_ro, int error, const char *where)
+dumper(const master_record_t *nfrec, int error, const char *where)
 {
-	char as[40], ds[40], datestr1[64], datestr2[64];
+	char srcaddrstr[40], dstaddrstr[40], firstdatestr[64], lastdatestr[64];
+	uint64_t srcaddr6[2], dstaddr6[2];
+	uint32_t srcaddr, dstaddr;
 	time_t when;
 	struct tm *ts;
-	master_record_t *nfrec = (master_record_t*)nfrec_ro;
+	int rv;
 
 	if (error != NFREAD_SUCCESS) {
 		fprintf(stderr, "Error in data file '%s'\n", where);
@@ -26,28 +29,30 @@ dumper(const master_record_t *nfrec_ro, int error, const char *where)
 	}
 
 	if ((nfrec->flags & FLAG_IPV6_ADDR) != 0) {
-		nfrec->v6.srcaddr[0] = htonll(nfrec->v6.srcaddr[0]);
-		nfrec->v6.srcaddr[1] = htonll(nfrec->v6.srcaddr[1]);
-		nfrec->v6.dstaddr[0] = htonll(nfrec->v6.dstaddr[0]);
-		nfrec->v6.dstaddr[1] = htonll(nfrec->v6.dstaddr[1]);
-		inet_ntop(AF_INET6, nfrec->v6.srcaddr, as, sizeof(as));
-		inet_ntop(AF_INET6, nfrec->v6.dstaddr, ds, sizeof(ds));
+		srcaddr6[0] = htonll(nfrec->v6.srcaddr[0]);
+		srcaddr6[1] = htonll(nfrec->v6.srcaddr[1]);
+		dstaddr6[0] = htonll(nfrec->v6.dstaddr[0]);
+		dstaddr6[1] = htonll(nfrec->v6.dstaddr[1]);
+		inet_ntop(AF_INET6, srcaddr6, srcaddrstr, sizeof(srcaddrstr));
+		inet_ntop(AF_INET6, dstaddr6, dstaddrstr, sizeof(dstaddrstr));
 	} else {
-		nfrec->v4.srcaddr = htonl(nfrec->v4.srcaddr);
-		nfrec->v4.dstaddr = htonl(nfrec->v4.dstaddr);
-		inet_ntop(AF_INET, &nfrec->v4.srcaddr, as, sizeof(as));
-		inet_ntop(AF_INET, &nfrec->v4.dstaddr, ds, sizeof(ds));
+		srcaddr = htonl(nfrec->v4.srcaddr);
+		dstaddr = htonl(nfrec->v4.dstaddr);
+		inet_ntop(AF_INET, &srcaddr, srcaddrstr, sizeof(srcaddrstr));
+		inet_ntop(AF_INET, &dstaddr, dstaddrstr, sizeof(dstaddrstr));
 	}
-	as[40-1] = 0;
-	ds[40-1] = 0;
 
 	when = nfrec->first;
 	ts = localtime(&when);
-	strftime(datestr1, 63, "%Y-%m-%d %H:%M:%S", ts);
+	rv = strftime(firstdatestr, sizeof(firstdatestr),
+	              "%Y-%m-%d %H:%M:%S", ts);
+	assert(rv);
 
 	when = nfrec->last;
 	ts = localtime(&when);
-	strftime(datestr2, 63, "%Y-%m-%d %H:%M:%S", ts);
+	rv = strftime(lastdatestr, sizeof(lastdatestr),
+	              "%Y-%m-%d %H:%M:%S", ts);
+	assert(rv);
 
 	fprintf(stdout, "Flow Record:\n"
 	                "  srcaddr     = %16s\n"
@@ -61,8 +66,10 @@ dumper(const master_record_t *nfrec_ro, int error, const char *where)
 	                "  dstport     =            %5u\n"
 	                "  dPkts       =       %10llu\n"
 	                "  dOctets     =       %10llu\n",
-	                as, ds, nfrec->first, datestr1, nfrec->last, datestr2,
-	                nfrec->msec_first, nfrec->msec_last, nfrec->prot,
+	                srcaddrstr, dstaddrstr,
+	                nfrec->first, firstdatestr, nfrec->last, lastdatestr,
+	                nfrec->msec_first, nfrec->msec_last,
+	                nfrec->prot,
 	                nfrec->srcport, nfrec->dstport,
 	                (unsigned long long)nfrec->dPkts,
 	                (unsigned long long)nfrec->dOctets);
