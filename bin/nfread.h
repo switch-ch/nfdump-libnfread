@@ -62,8 +62,9 @@ typedef unsigned char           uint8_t;
 /*
  * Initialize libnfread using rfile, Rfile and Mdirs configuration.
  * The nfread instance is always global; libnfread cannot be opened multiple
- * times.  rfile, Rfile and Mdirs are the same as -r -R and -M of the nfdump
- * utility.
+ * times and is not thread-safe.
+ *
+ * rfile, Rfile and Mdirs are the same as -r -R and -M of the nfdump utility.
  *
  * Returns 0 on success, -1 on failure.
  */
@@ -91,6 +92,12 @@ void nfread_fini(void);
 
 /*
  * Iterator callback type.
+ * On success, err is set to NFREAD_SUCCESS and nfrec is a pointer to a
+ * read netflow record, and where is NULL.
+ * On errors, err is != NFREAD_SUCCESS and where is a pointer to a string
+ * indicating which netflow data file was causing the error, and nfrec is NULL.
+ * The callback should return either NFREAD_LOOP_NEXT or NFREAD_LOOP_EXIT to
+ * signal libnfread whether to continue reading netflow records.
  */
 typedef int (*nfread_iterate_cb_t)(const master_record_t *nfrec,
                                    int err, const char *where);
