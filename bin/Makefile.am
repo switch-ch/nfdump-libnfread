@@ -21,6 +21,11 @@ if FT2NFDUMP
 bin_PROGRAMS += ft2nfdump
 endif
 
+lib_LTLIBRARIES = libnfread.la
+
+library_includedir = $(includedir)/nfread
+library_include_HEADERS = nfread.h nffile.h ../config.h
+
 BUILT_SOURCES = grammar.h
 AM_YFLAGS = -d
 
@@ -86,6 +91,10 @@ endif
 
 nfreader_SOURCES = nfreader.c \
 	$(util) $(filelzo) $(nflist) 
+
+libnfread_la_CFLAGS = $(AM_CFLAGS)
+libnfread_la_SOURCES = nfread.c nfread.h \
+	$(util) $(filelzo) $(nflist)
 
 nfanon_SOURCES = nfanon.c \
 	$(util) $(filelzo) $(nflist) $(anon)
