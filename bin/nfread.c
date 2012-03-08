@@ -113,6 +113,7 @@ nfread_iterate_flowrecord(nfread_iterate_cb_t iteratecb,
 	return iteratecb(&master_record, NFREAD_SUCCESS, NULL);
 }
 
+__attribute__((visibility("default")))
 int
 nfread_iterate(nfread_iterate_cb_t iteratecb)
 {
@@ -191,6 +192,7 @@ nfread_iterate(nfread_iterate_cb_t iteratecb)
 	return 0;
 }
 
+__attribute__((visibility("default")))
 int
 nfread_init(char *rfile, char *Rfile, char *Mdirs)
 {
@@ -213,6 +215,7 @@ nfread_init(char *rfile, char *Rfile, char *Mdirs)
 	return 0;
 }
 
+__attribute__((visibility("default")))
 void
 nfread_fini(void)
 {

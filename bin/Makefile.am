@@ -92,7 +92,7 @@ endif
 nfreader_SOURCES = nfreader.c \
 	$(util) $(filelzo) $(nflist) 
 
-libnfread_la_CFLAGS = $(AM_CFLAGS)
+libnfread_la_CFLAGS = $(AM_CFLAGS) -fvisibility=hidden
 libnfread_la_SOURCES = nfread.c nfread.h \
 	$(util) $(filelzo) $(nflist)
 
