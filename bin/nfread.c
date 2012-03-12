@@ -210,7 +210,7 @@ nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
 
 __attribute__((visibility("default")))
 int
-nfread_init(char *rfile, char *Rfile, char *Mdirs)
+nfread_init(const char *rfile, const char *Rfile, const char *Mdirs)
 {
 	if (rfile && Rfile) {
 		fprintf(stderr, "-r and -R are mutually exclusive. "
@@ -226,7 +226,7 @@ nfread_init(char *rfile, char *Rfile, char *Mdirs)
 	}
 
 	InitExtensionMaps(&extension_map_list);
-	SetupInputFileSequence(Mdirs, rfile, Rfile);
+	SetupInputFileSequence((char*)Mdirs, (char*)rfile, (char*)Rfile);
 
 	return 0;
 }

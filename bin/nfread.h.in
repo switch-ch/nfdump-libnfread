@@ -114,10 +114,10 @@ unsigned long nfread_version(void);
  *
  * Returns 0 on success, -1 on failure.
  */
-int nfread_init(char *rfile, char *Rfile, char *Mdirs);
+int nfread_init(const char *rfile, const char *Rfile, const char *Mdirs);
 
 /*
- * Deinitialize libnfread.
+ * Deinitialize libnfread after initialization using nfread_init().
  */
 void nfread_fini(void);
 
