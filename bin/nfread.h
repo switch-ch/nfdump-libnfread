@@ -53,10 +53,10 @@ typedef unsigned char           uint8_t;
 #ifdef WORDS_BIGENDIAN
 #       define ntohll(n)        (n)
 #       define htonll(n)        (n)
-#else
+#else /* !WORDS_BIGENDIAN */
 #       define ntohll(n)        (((uint64_t)ntohl(n)) << 32) + ntohl((n) >> 32)
 #       define htonll(n)        (((uint64_t)htonl(n)) << 32) + htonl((n) >> 32)
-#endif
+#endif /* !WORDS_BIGENDIAN */
 #endif /* !NFREAD_C */
 
 /*
