@@ -1,5 +1,5 @@
 /*
- * gcc -I/usr/local/include -L/usr/local/lib -o nfreadex nfreadex.c -lnfread
+ * gcc -I/usr/local/include -L/usr/local/lib -o nfreadex2 nfreadex2.c -lnfread
  */
 
 #include <nfread/nfread.h>
@@ -80,23 +80,29 @@ dumper(const master_record_t *nfrec, int error, const char *where)
 int
 main(int argc, char *argv[])
 {
+	nffile_t *nffile;
+
 	if (!argv[1]) {
-		fprintf(stderr, "Usage: %s basedir\n", argv[0]);
+		fprintf(stderr, "Usage: %s flowfile\n", argv[0]);
 		exit(EXIT_FAILURE);
 	}
 
 	printf("compiled against libnfread 0x%08lx\n", NFREAD_VERSION);
 	printf("rtlinked against libnfread 0x%08lx\n", nfread_version());
 
-	nfread_init(NULL, ".", argv[1]); /* -M basedir -R . */
+	nffile = nfread_file_open(argv[1]);
+	if (!nffile) {
+		fprintf(stderr, "Failed to open '%s'\n", argv[1]);
+		exit(EXIT_FAILURE);
+	}
 
 	printf("All flows:\n");
-	nfread_iterate(dumper);
+	nfread_file_iterate(nffile, dumper);
 
 	printf("Flows with src or dst port 53:\n");
-	nfread_iterate_filtered(dumper, "port 53");
+	nfread_file_iterate_filtered(nffile, dumper, "port 53");
 
-	nfread_fini();
+	nfread_file_close(nffile);
 	return EXIT_SUCCESS;
 }
 

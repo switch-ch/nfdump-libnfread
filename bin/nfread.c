@@ -176,7 +176,6 @@ nfread_iterate_file(nfread_iterate_cb_t itercb,
 		}
 	}
 
-	/* not reached */
 	return NFREAD_LOOP_NEXT;
 }
 
@@ -279,8 +278,6 @@ nfread_file_iterate_filtered(nffile_t *nffile, nfread_iterate_cb_t itercb,
 	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
 	InitExtensionMaps(&extmap_list);
 	rv = nfread_iterate_file(itercb, nffile, fltengine, &extmap_list);
-	CloseFile(nffile);
-	DisposeFile(nffile);
 	PackExtensionMapList(&extmap_list);
 	return (rv == NFREAD_LOOP_NEXT) ? 0 : -1;
 }
