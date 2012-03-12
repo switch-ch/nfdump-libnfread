@@ -85,6 +85,9 @@ main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
+	printf("compiled against libnfread 0x%08lx\n", NFREAD_VERSION);
+	printf("rtlinked against libnfread 0x%08lx\n", nfread_version());
+
 	nfread_init(NULL, ".", argv[1]); /* -M basedir -R . */
 
 	printf("All flows:\n");

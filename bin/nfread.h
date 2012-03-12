@@ -60,6 +60,15 @@ typedef unsigned char           uint8_t;
 #endif /* !NFREAD_C */
 
 /*
+ * Version of libnfread.
+ * 0xAABBCCDD where AA.BB.CC is nfdump version, DD is libnfread revision.
+ * Use NFREAD_VERSION to determine the version at build-time and
+ * nfread_version() at run-time.
+ */
+#define NFREAD_VERSION       0x01060502UL
+unsigned long nfread_version(void);
+
+/*
  * Initialize libnfread using rfile, Rfile and Mdirs configuration.
  * The nfread instance is always global; libnfread cannot be opened multiple
  * times and is not thread-safe.

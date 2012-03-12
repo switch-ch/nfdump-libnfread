@@ -237,3 +237,10 @@ nfread_fini(void)
 {
 }
 
+__attribute__((visibility("default")))
+unsigned long
+nfread_version(void)
+{
+	return NFREAD_VERSION;
+}
+
