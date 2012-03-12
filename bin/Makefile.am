@@ -24,7 +24,7 @@ endif
 lib_LTLIBRARIES = libnfread.la
 
 library_includedir = $(includedir)/nfread
-library_include_HEADERS = nfread.h nffile.h ../config.h
+library_include_HEADERS = nfread.h nffile.h
 
 BUILT_SOURCES = grammar.h
 AM_YFLAGS = -d

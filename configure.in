@@ -359,8 +359,12 @@ char	string[16];
 ]
 )
 
+AC_SUBST([ac_cv_header_stdint_h])
+AC_SUBST([ac_cv_header_stddef_h])
+AC_SUBST([ac_cv_c_bigendian])
+
 #AC_CONFIG_FILES([Makefile])
-AC_OUTPUT(Makefile bin/Makefile man/Makefile)
+AC_OUTPUT(Makefile bin/Makefile man/Makefile bin/nfread.h)
 
 echo ""
 echo "* Many thanks for using nfdump tools"
