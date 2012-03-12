@@ -113,6 +113,7 @@ void nfread_fini(void);
  * Iterate over all netflow records in the global file set, unpack them,
  * and pass them to nfread_iterate_cb_t.  The _filtered variant additionally
  * filters the flows using an nfdump filter expression.
+ * Returns -1 if the loop was aborted for some reason, 0 if not.
  */
 #define nfread_iterate(cb) \
         nfread_iterate_filtered((cb), NULL)
@@ -135,6 +136,7 @@ void nfread_file_close(nffile_t *nffile) __attribute__((nonnull));
  * Iterate over all netflow records in a file, unpack them, and pass them to
  * nfread_iterate_cb_t.  The _filtered variant additionally filters the
  * flows using an nfdump filter expression.
+ * Returns -1 if the loop was aborted for some reason, 0 if not.
  */
 #define nfread_file_iterate(nffile, cb) \
         nfread_file_iterate_filtered((nffile), (cb), NULL)
