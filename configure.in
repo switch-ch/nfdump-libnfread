@@ -359,7 +359,8 @@ char	string[16];
 ]
 )
 
-dnl bin/nfread.h needs these, because it cannot include config.h
+dnl bin/nfread-config.h needs these, because it cannot include config.h
+dnl because that would lead to namespace pollution in code using the lib
 if test "$ac_cv_header_stdint_h" = "yes"; then
 	AC_SUBST([HAVE_STDINT_H], [1])
 else
@@ -377,7 +378,7 @@ else
 fi
 
 #AC_CONFIG_FILES([Makefile])
-AC_OUTPUT(Makefile bin/Makefile man/Makefile bin/nfread.h)
+AC_OUTPUT(Makefile bin/Makefile man/Makefile bin/nfread-config.h)
 
 echo ""
 echo "* Many thanks for using nfdump tools"

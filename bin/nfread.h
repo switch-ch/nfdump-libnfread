@@ -38,53 +38,10 @@
 #ifndef NFREAD_H
 #define NFREAD_H
 
-#ifndef NFREAD_C
-
-/* required knobs from config.h; including config.h would pollute the
- * library user's namespace and make it impossible to use the library
- * in an autotools project. */
-#if @HAVE_STDINT_H@
-#define NFREAD_HAVE_STDINT_H            1
-#endif /* AC_SUBST(HAVE_STDINT_H) */
-#if @HAVE_STDDEF_H@
-#define NFREAD_HAVE_STDDEF_H            1
-#endif /* AC_SUBST(HAVE_STDDEF_H) */
-#if @WORDS_BIGENDIAN@
-#define NFREAD_WORDS_BIGENDIAN          1
-#endif /* AC_SUBST(WORDS_BIGENDIAN) */
-
-/* standard integer types */
-#ifdef NFREAD_HAVE_STDINT_H
-#include <stdint.h>
-#else /* !NFREAD_HAVE_STDINT_H */
-typedef unsigned long long      uint64_t;
-typedef unsigned long           uint32_t;
-typedef unsigned short          uint16_t;
-typedef unsigned char           uint8_t;
-#endif /* !NFREAD_HAVE_STDINT_H */
-
-/* master_record_t and nffile_t are defined in nffile.h;
- * we need the preprocessor hacks in order to prevent namespace clashes
- * if this header is used in an autotools-enabled project; in the long
- * run, nffile.h should be cleaned up since it pollutes the namespace
- * with problematic symbols */
-#if !defined(HAVE_STDDEF_H) && defined(NFREAD_HAVE_STDDEF_H)
-#define HAVE_STDDEF_H                   1
-#define NFREAD_DEFINED_HAVE_STDDEF_H    1
-#endif /* !defined(HAVE_STDDEF_H) && defined(NFREAD_HAVE_STDDEF_H) */
-#if !defined(WORDS_BIGENDIAN) && defined(NFREAD_WORDS_BIGENDIAN)
-#define WORDS_BIGENDIAN                 1
-#define NFREAD_DEFINED_WORDS_BIGENDIAN  1
-#endif /* !defined(WORDS_BIGENDIAN) && defined(NFREAD_WORDS_BIGENDIAN) */
-#include <nfread/nffile.h>
-#ifdef NFREAD_DEFINED_HAVE_STDDEF_H
-#undef HAVE_STDDEF_H
-#undef NFREAD_DEFINED_HAVE_STDDEF_H
-#endif /* NFREAD_DEFINED_HAVE_STDDEF_H */
-#ifdef NFREAD_DEFINED_WORDS_BIGENDIAN
-#undef WORDS_BIGENDIAN
-#undef NFREAD_DEFINED_WORDS_BIGENDIAN
-#endif /* NFREAD_DEFINED_WORDS_BIGENDIAN */
+#ifdef NFREAD_C
+#include "nfread-config.h"
+#else /* !NFREAD_C */
+#include <nfread/nfread-config.h>
 
 /* useful parts from util.h */
 #ifdef NFREAD_WORDS_BIGENDIAN
@@ -96,11 +53,6 @@ typedef unsigned char           uint8_t;
 #endif /* !NFREAD_WORDS_BIGENDIAN */
 
 #endif /* !NFREAD_C */
-
-
-#if !defined(__GNUC__) && !defined(__attribute__)
-#define __attribute__(x) 
-#endif /* !defined(__GNUC__) && !defined(__attribute__) */
 
 
 /*
