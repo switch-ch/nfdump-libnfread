@@ -63,10 +63,11 @@ typedef unsigned short          uint16_t;
 typedef unsigned char           uint8_t;
 #endif /* !NFREAD_HAVE_STDINT_H */
 
-/* master_record_t is defined in nffile.h; we need the preprocessor hacks
- * in order to prevent namespace clashes if this header is used in an
- * autotools-enabled project; in the long run, nffile.h should be cleaned
- * up since it pollutes the namespace with problematic symbols */
+/* master_record_t and nffile_t are defined in nffile.h;
+ * we need the preprocessor hacks in order to prevent namespace clashes
+ * if this header is used in an autotools-enabled project; in the long
+ * run, nffile.h should be cleaned up since it pollutes the namespace
+ * with problematic symbols */
 #if !defined(HAVE_STDDEF_H) && defined(NFREAD_HAVE_STDDEF_H)
 #define HAVE_STDDEF_H                   1
 #define NFREAD_DEFINED_HAVE_STDDEF_H    1
@@ -96,30 +97,21 @@ typedef unsigned char           uint8_t;
 
 #endif /* !NFREAD_C */
 
+
+#if !defined(__GNUC__) && !defined(__attribute__)
+#define __attribute__(x) 
+#endif /* !defined(__GNUC__) && !defined(__attribute__) */
+
+
 /*
  * Version of libnfread.
  * 0xAABBCCDD where AA.BB.CC is nfdump version, DD is libnfread revision.
  * Use NFREAD_VERSION to determine the version at build-time and
  * nfread_version() at run-time.
  */
-#define NFREAD_VERSION          0x01060502UL
-unsigned long nfread_version(void);
+#define NFREAD_VERSION          0x01060503UL
+unsigned long nfread_version(void) __attribute__((const));
 
-/*
- * Initialize libnfread using rfile, Rfile and Mdirs configuration.
- * The nfread instance is always global; libnfread cannot be opened multiple
- * times and is not thread-safe.
- *
- * rfile, Rfile and Mdirs are the same as -r -R and -M of the nfdump utility.
- *
- * Returns 0 on success, -1 on failure.
- */
-int nfread_init(const char *rfile, const char *Rfile, const char *Mdirs);
-
-/*
- * Deinitialize libnfread after initialization using nfread_init().
- */
-void nfread_fini(void);
 
 /*
  * Error codes passed to nfread_iterate_cb_t's err argument.
@@ -148,13 +140,55 @@ void nfread_fini(void);
 typedef int (*nfread_iterate_cb_t)(const master_record_t *nfrec,
                                    int err, const char *where);
 
+
 /*
- * Iterate over all netflow records, unpack them, and pass them to
+ * Initialize the global file set using rfile, Rfile and Mdirs configuration.
+ * The nfread instance is always global; libnfread cannot be opened multiple
+ * times and is not thread-safe.
+ *
+ * rfile, Rfile and Mdirs are the same as -r -R and -M of the nfdump utility.
+ *
+ * Returns 0 on success, -1 on failure.
+ */
+int nfread_init(const char *rfile, const char *Rfile, const char *Mdirs);
+
+/*
+ * Deinitialize libnfread after initialization using nfread_init().
+ */
+void nfread_fini(void);
+
+/*
+ * Iterate over all netflow records in the global file set, unpack them,
+ * and pass them to nfread_iterate_cb_t.  The _filtered variant additionally
+ * filters the flows using an nfdump filter expression.
+ */
+#define nfread_iterate(cb) \
+        nfread_iterate_filtered((cb), NULL)
+int nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
+                            __attribute__((nonnull(1)));
+
+
+/*
+ * Open a specific file containing netflow data by name independent of the
+ * global file set.
+ */
+nffile_t * nfread_file_open(const char *filename) __attribute__((malloc));
+
+/*
+ * Close a specific file opened previously by nfread_file_open().
+ */
+void nfread_file_close(nffile_t *nffile) __attribute__((nonnull));
+
+/*
+ * Iterate over all netflow records in a file, unpack them, and pass them to
  * nfread_iterate_cb_t.  The _filtered variant additionally filters the
  * flows using an nfdump filter expression.
  */
-#define nfread_iterate(cb) nfread_iterate_filtered((cb), NULL)
-int nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr);
+#define nfread_file_iterate(nffile, cb) \
+        nfread_file_iterate_filtered((nffile), (cb), NULL)
+int nfread_file_iterate_filtered(nffile_t *nffile, nfread_iterate_cb_t itercb,
+                                 const char *fltexpr)
+                                 __attribute__((nonnull(1,2)));
 
 #endif /* NFREAD_H */
 

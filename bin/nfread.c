@@ -78,21 +78,20 @@ typedef uint64_t    pointer_addr_t;
 typedef uint32_t    pointer_addr_t;
 #endif
 
-/* module limited globals */
-extension_map_list_t extension_map_list;
 
 #include "nffile_inline.c"
 
 static int
 nfread_iterate_flowrecord(nfread_iterate_cb_t itercb,
                           common_record_t *flow_record,
-                          FilterEngine_data_t *fltengine)
+                          FilterEngine_data_t *fltengine,
+                          extension_map_list_t *extmap_list)
 {
 	master_record_t master_record;
 
 	if (flow_record->type == ExtensionMapType) {
 		extension_map_t *map = (extension_map_t *)flow_record;
-		if (Insert_Extension_Map(&extension_map_list, map)) {
+		if (Insert_Extension_Map(extmap_list, map)) {
 			/* flush new map */
 		} /* else map already known and flushed */
 		return NFREAD_LOOP_NEXT;
@@ -103,16 +102,16 @@ nfread_iterate_flowrecord(nfread_iterate_cb_t itercb,
 		return itercb(NULL, NFREAD_ERECTYPE, GetCurrentFilename());
 	}
 
-	if (!extension_map_list.slot[flow_record->ext_map]) {
+	if (!extmap_list->slot[flow_record->ext_map]) {
 		/* unknown flow_record->ext_map */
 		return itercb(NULL, NFREAD_ECORRUPT, GetCurrentFilename());
 	}
 
 	ExpandRecord_v2(flow_record,
-	                extension_map_list.slot[flow_record->ext_map],
+	                extmap_list->slot[flow_record->ext_map],
 	                &master_record);
 	/* update number of flows matching a given map */
-	extension_map_list.slot[flow_record->ext_map]->ref_count++;
+	extmap_list->slot[flow_record->ext_map]->ref_count++;
 	if (fltengine) {
 		fltengine->nfrecord = (uint64_t *)&master_record;
 		/* XXX is this really ptr to func ptr? */
@@ -123,53 +122,32 @@ nfread_iterate_flowrecord(nfread_iterate_cb_t itercb,
 	return itercb(&master_record, NFREAD_SUCCESS, NULL);
 }
 
-__attribute__((visibility("default")))
-int
-nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
+/*
+ * Returns NFREAD_LOOP_NEXT if the file was iterated successfully.
+ * Returns NFREAD_LOOP_EXIT if the loop was aborted for some reason.
+ */
+static int
+nfread_iterate_file(nfread_iterate_cb_t itercb,
+                    nffile_t *nffile,
+                    FilterEngine_data_t *fltengine,
+                    extension_map_list_t *extmap_list)
 {
 	common_record_t *flow_record;
-	nffile_t *nffile;
-	FilterEngine_data_t *fltengine;
-	int i, done, ret, rv;
+	int rv, i;
 
-	/* get the first file handle */
-	nffile = GetNextFile(NULL, 0, 0);
-	if (!nffile) {
-		LogError("GetNextFile() error in %s line %d: %s\n",
-		         __FILE__, __LINE__, strerror(errno));
-		return -1;
-	}
-
-	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
-
-	done = 0;
-	while (!done) {
+	for (;;) {
 		/* get next data block from file */
-		ret = ReadBlock(nffile);
-
-		switch (ret) {
+		switch ((rv = ReadBlock(nffile))) {
 			case NF_CORRUPT:
 			case NF_ERROR:
-				rv = itercb(NULL, ret == NF_CORRUPT ?
+				rv = itercb(NULL, rv == NF_CORRUPT ?
 				            NFREAD_ECORRUPT : NFREAD_ERROR,
 				            GetCurrentFilename());
-				if (rv == NFREAD_LOOP_EXIT) {
-					done = 1;
-					continue;
-				}
+				if (rv == NFREAD_LOOP_EXIT)
+					return NFREAD_LOOP_EXIT;
 				/* fall through */
 			case NF_EOF:
-			{
-				nffile_t *next = GetNextFile(nffile, 0, 0);
-				if (next == EMPTY_LIST) {
-					done = 1;
-				} else if (next == NULL) {
-					done = 1;
-					itercb(NULL, NFREAD_ERROR,
-					       "unexpected end of list");
-				}
-				continue;
-			}
+				return NFREAD_LOOP_NEXT;
 		}
 
 		if (nffile->block_header->id == Large_BLOCK_Type) {
@@ -182,29 +160,60 @@ nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
 			rv = itercb(NULL, NFREAD_EBLKTYPE,
 			            GetCurrentFilename());
 			if (rv == NFREAD_LOOP_EXIT)
-				done = 1;
+				return NFREAD_LOOP_EXIT;
 			continue;
 		}
 
 		flow_record = nffile->buff_ptr;
-		for (i = 0;
-		     i < nffile->block_header->NumRecords && !done;
-		     i++) {
+		for (i = 0; i < nffile->block_header->NumRecords; i++) {
 			rv = nfread_iterate_flowrecord(itercb, flow_record,
-			                               fltengine);
-			if (rv == NFREAD_LOOP_EXIT) {
-				done = 1;
-				continue;
-			}
+			                               fltengine, extmap_list);
+			if (rv == NFREAD_LOOP_EXIT)
+				return NFREAD_LOOP_EXIT;
 			flow_record = (common_record_t *)(
 			               ((pointer_addr_t)flow_record)
 			               + flow_record->size);
 		}
 	}
 
+	/* not reached */
+	return NFREAD_LOOP_NEXT;
+}
+
+__attribute__((visibility("default")))
+int
+nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
+{
+	extension_map_list_t extmap_list;
+	nffile_t *nffile;
+	FilterEngine_data_t *fltengine;
+
+	nffile = GetNextFile(NULL, 0, 0);
+	if (!nffile) {
+		LogError("GetNextFile() error in %s line %d: %s\n",
+		         __FILE__, __LINE__, strerror(errno));
+		return -1;
+	}
+
+	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
+
+	InitExtensionMaps(&extmap_list);
+
+	while (nfread_iterate_file(itercb, nffile, fltengine, &extmap_list)
+	       == NFREAD_LOOP_NEXT) {
+		nffile_t *next = GetNextFile(nffile, 0, 0);
+		if (next == EMPTY_LIST) {
+			break;
+		} else if (next == NULL) {
+			itercb(NULL, NFREAD_ERROR,
+			       "unexpected end of list");
+			break;
+		}
+	}
+
 	CloseFile(nffile);
 	DisposeFile(nffile);
-	PackExtensionMapList(&extension_map_list);
+	PackExtensionMapList(&extmap_list);
 	return 0;
 }
 
@@ -225,7 +234,6 @@ nfread_init(const char *rfile, const char *Rfile, const char *Mdirs)
 		exit(255);
 	}
 
-	InitExtensionMaps(&extension_map_list);
 	SetupInputFileSequence((char*)Mdirs, (char*)rfile, (char*)Rfile);
 
 	return 0;
@@ -243,4 +251,38 @@ nfread_version(void)
 {
 	return NFREAD_VERSION;
 }
+
+__attribute__((visibility("default")))
+nffile_t *
+nfread_file_open(const char *filename)
+{
+	return OpenFile((char*)filename, NULL);
+}
+
+__attribute__((visibility("default")))
+void
+nfread_file_close(nffile_t *nffile)
+{
+	CloseFile(nffile);
+	DisposeFile(nffile);
+}
+
+__attribute__((visibility("default")))
+int
+nfread_file_iterate_filtered(nffile_t *nffile, nfread_iterate_cb_t itercb,
+                             const char *fltexpr)
+{
+	extension_map_list_t extmap_list;
+	FilterEngine_data_t *fltengine;
+	int rv;
+
+	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
+	InitExtensionMaps(&extmap_list);
+	rv = nfread_iterate_file(itercb, nffile, fltengine, &extmap_list);
+	CloseFile(nffile);
+	DisposeFile(nffile);
+	PackExtensionMapList(&extmap_list);
+	return (rv == NFREAD_LOOP_NEXT) ? 0 : -1;
+}
+
 
