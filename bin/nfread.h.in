@@ -43,15 +43,15 @@
 /* required knobs from config.h; including config.h would pollute the
  * library user's namespace and make it impossible to use the library
  * in an autotools project. */
-#if @ac_cv_header_stdint_h@ == yes
+#if @HAVE_STDINT_H@
 #define NFREAD_HAVE_STDINT_H            1
-#endif /* ac_cv_header_stdint_h */
-#if @ac_cv_header_stddef_h@ == yes
+#endif /* AC_SUBST(HAVE_STDINT_H) */
+#if @HAVE_STDDEF_H@
 #define NFREAD_HAVE_STDDEF_H            1
-#endif /* ac_cv_header_stddef_h */
-#if @ac_cv_c_bigendian@ == yes
+#endif /* AC_SUBST(HAVE_STDDEF_H) */
+#if @WORDS_BIGENDIAN@
 #define NFREAD_WORDS_BIGENDIAN          1
-#endif /* ac_cv_c_bigendian */
+#endif /* AC_SUBST(WORDS_BIGENDIAN) */
 
 /* standard integer types */
 #ifdef NFREAD_HAVE_STDINT_H

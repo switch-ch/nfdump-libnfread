@@ -359,9 +359,22 @@ char	string[16];
 ]
 )
 
-AC_SUBST([ac_cv_header_stdint_h])
-AC_SUBST([ac_cv_header_stddef_h])
-AC_SUBST([ac_cv_c_bigendian])
+dnl bin/nfread.h needs these, because it cannot include config.h
+if test "$ac_cv_header_stdint_h" = "yes"; then
+	AC_SUBST([HAVE_STDINT_H], [1])
+else
+	AC_SUBST([HAVE_STDINT_H], [0])
+fi
+if test "$ac_cv_header_stddef_h" = "yes"; then
+	AC_SUBST([HAVE_STDDEF_H], [1])
+else
+	AC_SUBST([HAVE_STDDEF_H], [0])
+fi
+if test "$ac_cv_c_bigendian" = "yes"; then
+	AC_SUBST([WORDS_BIGENDIAN], [1])
+else
+	AC_SUBST([WORDS_BIGENDIAN], [0])
+fi
 
 #AC_CONFIG_FILES([Makefile])
 AC_OUTPUT(Makefile bin/Makefile man/Makefile bin/nfread.h)
