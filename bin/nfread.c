@@ -220,6 +220,8 @@ __attribute__((visibility("default")))
 int
 nfread_init(const char *rfile, const char *Rfile, const char *Mdirs)
 {
+	char *rfilecpy, *Rfilecpy, *Mdirscpy;
+
 	if (rfile && Rfile) {
 		fprintf(stderr, "-r and -R are mutually exclusive. "
 		                "Please specify either -r or -R\n");
@@ -233,7 +235,16 @@ nfread_init(const char *rfile, const char *Rfile, const char *Mdirs)
 		exit(255);
 	}
 
-	SetupInputFileSequence((char*)Mdirs, (char*)rfile, (char*)Rfile);
+	rfilecpy = rfile ? strdup(rfile) : NULL;
+	Rfilecpy = Rfile ? strdup(Rfile) : NULL;
+	Mdirscpy = Mdirs ? strdup(Mdirs) : NULL;
+	SetupInputFileSequence(Mdirscpy, rfilecpy, Rfilecpy);
+	if (rfilecpy)
+		free(rfilecpy);
+	if (Rfilecpy)
+		free(Rfilecpy);
+	if (Mdirscpy)
+		free(Mdirscpy);
 
 	return 0;
 }
