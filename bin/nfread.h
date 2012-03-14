@@ -61,7 +61,7 @@
  * Use NFREAD_VERSION to determine the version at build-time and
  * nfread_version() at run-time.
  */
-#define NFREAD_VERSION          0x01060503UL
+#define NFREAD_VERSION          0x01060504UL
 unsigned long nfread_version(void) __attribute__((const));
 
 
@@ -82,15 +82,22 @@ unsigned long nfread_version(void) __attribute__((const));
 
 /*
  * Iterator callback type.
+ *
  * On success, err is set to NFREAD_SUCCESS and nfrec is a pointer to a
  * read netflow record, and where is NULL.
+ *
  * On errors, err is != NFREAD_SUCCESS and where is a pointer to a string
  * indicating which netflow data file was causing the error, and nfrec is NULL.
+ *
  * The callback should return either NFREAD_LOOP_NEXT or NFREAD_LOOP_EXIT to
  * signal libnfread whether to continue reading netflow records.
+ *
+ * Arg is the pointer passed to the call to one of the iterate() functions
+ * and can be NULL.
  */
 typedef int (*nfread_iterate_cb_t)(const master_record_t *nfrec,
-                                   int err, const char *where);
+                                   int err, const char *where,
+                                   void *arg);
 
 
 /*
@@ -111,14 +118,19 @@ void nfread_fini(void);
 
 /*
  * Iterate over all netflow records in the global file set, unpack them,
- * and pass them to nfread_iterate_cb_t.  The _filtered variant additionally
- * filters the flows using an nfdump filter expression.
+ * and pass them to the provided callback function.
+ *
+ * The provided opaque pointer argument arg is passed to the iterator callback
+ * and can be used to pass context to the callbacks.  It can be NULL.
+ *
+ * If fltexpr is non-NULL, filter flows and only pass flows matching the
+ * nfdump filterexpression to the callback.  If it is NULL, all flows are
+ * passed to the callback.
+ *
  * Returns -1 if the loop was aborted for some reason, 0 if not.
  */
-#define nfread_iterate(cb) \
-        nfread_iterate_filtered((cb), NULL)
-int nfread_iterate_filtered(nfread_iterate_cb_t itercb, const char *fltexpr)
-                            __attribute__((nonnull(1)));
+int nfread_iterate(nfread_iterate_cb_t itercb, void *arg, const char *fltexpr)
+                   __attribute__((nonnull(1)));
 
 
 /*
@@ -134,15 +146,20 @@ void nfread_file_close(nffile_t *nffile) __attribute__((nonnull));
 
 /*
  * Iterate over all netflow records in a file, unpack them, and pass them to
- * nfread_iterate_cb_t.  The _filtered variant additionally filters the
- * flows using an nfdump filter expression.
+ * the provided callback function.
+ *
+ * The provided opaque pointer argument arg is passed to the iterator callback
+ * and can be used to pass context to the callbacks.  It can be NULL.
+ *
+ * If fltexpr is non-NULL, filter flows and only pass flows matching the
+ * nfdump filterexpression to the callback.  If it is NULL, all flows are
+ * passed to the callback.
+ *
  * Returns -1 if the loop was aborted for some reason, 0 if not.
  */
-#define nfread_file_iterate(nffile, cb) \
-        nfread_file_iterate_filtered((nffile), (cb), NULL)
-int nfread_file_iterate_filtered(nffile_t *nffile, nfread_iterate_cb_t itercb,
-                                 const char *fltexpr)
-                                 __attribute__((nonnull(1,2)));
+int nfread_file_iterate(nffile_t *nffile, nfread_iterate_cb_t itercb,
+                        void *arg, const char *fltexpr)
+                        __attribute__((nonnull(1,2)));
 
 #endif /* NFREAD_H */
 

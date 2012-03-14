@@ -13,9 +13,15 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+typedef struct dumper_ctx {
+	unsigned long long count4;
+	unsigned long long count6;
+} dumper_ctx_t;
+
 static int
-dumper(const master_record_t *nfrec, int error, const char *where)
+dumper(const master_record_t *nfrec, int error, const char *where, void *arg)
 {
+	dumper_ctx_t *ctx = arg;
 	char srcaddrstr[40], dstaddrstr[40], firstdatestr[64], lastdatestr[64];
 	uint64_t srcaddr6[2], dstaddr6[2];
 	uint32_t srcaddr, dstaddr;
@@ -35,11 +41,13 @@ dumper(const master_record_t *nfrec, int error, const char *where)
 		dstaddr6[1] = htonll(nfrec->v6.dstaddr[1]);
 		inet_ntop(AF_INET6, srcaddr6, srcaddrstr, sizeof(srcaddrstr));
 		inet_ntop(AF_INET6, dstaddr6, dstaddrstr, sizeof(dstaddrstr));
+		ctx->count6++;
 	} else {
 		srcaddr = htonl(nfrec->v4.srcaddr);
 		dstaddr = htonl(nfrec->v4.dstaddr);
 		inet_ntop(AF_INET, &srcaddr, srcaddrstr, sizeof(srcaddrstr));
 		inet_ntop(AF_INET, &dstaddr, dstaddrstr, sizeof(dstaddrstr));
+		ctx->count4++;
 	}
 
 	when = nfrec->first;
@@ -80,6 +88,7 @@ dumper(const master_record_t *nfrec, int error, const char *where)
 int
 main(int argc, char *argv[])
 {
+	dumper_ctx_t ctx;
 	nffile_t *nffile;
 
 	if (!argv[1]) {
@@ -97,10 +106,16 @@ main(int argc, char *argv[])
 	}
 
 	printf("All flows:\n");
-	nfread_file_iterate(nffile, dumper);
+	ctx.count4 = ctx.count6 = 0;
+	nfread_file_iterate(nffile, dumper, &ctx, NULL);
+	printf("Processed %llu IPv4 and %llu IPv6 flows.\n",
+	       ctx.count4, ctx.count6);
 
 	printf("Flows with src or dst port 53:\n");
-	nfread_file_iterate_filtered(nffile, dumper, "port 53");
+	ctx.count4 = ctx.count6 = 0;
+	nfread_file_iterate(nffile, dumper, &ctx, "port 53");
+	printf("Processed %llu IPv4 and %llu IPv6 flows.\n",
+	       ctx.count4, ctx.count6);
 
 	nfread_file_close(nffile);
 	return EXIT_SUCCESS;
