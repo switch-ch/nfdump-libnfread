@@ -38,11 +38,14 @@
 #ifndef NFREAD_H
 #define NFREAD_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 #ifdef NFREAD_C
 #include "nfread-config.h"
 #else /* !NFREAD_C */
 #include <nfread/nfread-config.h>
-
 /* useful parts from util.h */
 #ifdef NFREAD_WORDS_BIGENDIAN
 #       define ntohll(n)        (n)
@@ -51,9 +54,7 @@
 #       define ntohll(n)        (((uint64_t)ntohl(n)) << 32) + ntohl((n) >> 32)
 #       define htonll(n)        (((uint64_t)htonl(n)) << 32) + htonl((n) >> 32)
 #endif /* !NFREAD_WORDS_BIGENDIAN */
-
 #endif /* !NFREAD_C */
-
 
 /*
  * Version of libnfread.
@@ -61,9 +62,8 @@
  * Use NFREAD_VERSION to determine the version at build-time and
  * nfread_version() at run-time.
  */
-#define NFREAD_VERSION          0x01060504UL
+#define NFREAD_VERSION          0x01060505UL
 unsigned long nfread_version(void) __attribute__((const));
-
 
 /*
  * Error codes passed to nfread_iterate_cb_t's err argument.
@@ -160,6 +160,10 @@ void nfread_file_close(nffile_t *nffile) __attribute__((nonnull));
 int nfread_file_iterate(nffile_t *nffile, nfread_iterate_cb_t itercb,
                         void *arg, const char *fltexpr)
                         __attribute__((nonnull(1,2)));
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif /* NFREAD_H */
 
