@@ -681,10 +681,13 @@ static void receiveError(SFSample *sample, char *errm, int hexdump)
 
 static void lengthCheck(SFSample *sample, char *description, u_char *start, int len) {
 	uint32_t actualLen = (u_char *)sample->datap - start;
-	if(actualLen != len) {
+	uint32_t adjustedLen = ((len + 3) >> 2) << 2;
+	if(actualLen != adjustedLen) {
+		dbg_printf("%s length error (expected %d, found %d)\n", description, len, actualLen);
 		syslog(LOG_ERR, "SFLOW: %s length error (expected %d, found %d)\n", description, len, actualLen);
 		SFABORT(sample, SF_ABORT_LENGTH_ERROR);
-	}
+  }
+
 }
 
 /*_________________---------------------------__________________
@@ -1029,15 +1032,7 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	if( sample->ip_fragmentOffset > 0 ) 
 		return;
 
-	// count the bytes from the start of IP header, with the exception that
-	// for udp packets we use the udp_pduLen. This is because the udp_pduLen
-	// can be up tp 65535 bytes, which causes fragmentation at the IP layer.
-	// Since the sampled fragments are discarded, we have to use this field
-	// to get the total bytes estimates right.
-	if(sample->udp_pduLen > 0) 
-		bytes = sample->udp_pduLen;
-	else 
-		bytes = sample->sampledPacketSize - sample->stripped - sample->offsetToIPV4;
+	bytes = sample->sampledPacketSize;
 	
 	ip_flags = 0;
 	if ( sample->nextHop.type == SFLADDRESSTYPE_IP_V6 )
@@ -1223,18 +1218,19 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 			} break;
 			case EX_ROUTER_IP_v4:
 			case EX_ROUTER_IP_v6: 	// IPv4/IPv6 router address
-				if ( exporter->sa_family == PF_INET6 ) {
-					tpl_ext_24_t *tpl = (tpl_ext_24_t *)next_data;
-					tpl->router_ip[0] = fs->ip.v6[0];
-					tpl->router_ip[1] = fs->ip.v6[1];
-					next_data = (void *)tpl->data;
-					SetFlag(common_record->flags, FLAG_IPV6_EXP);
-				} else {
-					tpl_ext_23_t *tpl = (tpl_ext_23_t *)next_data;
-					tpl->router_ip = fs->ip.v4;
-					next_data = (void *)tpl->data;
-					ClearFlag(common_record->flags, FLAG_IPV6_EXP);
-				}
+			if(sample->agent_addr.type == SFLADDRESSTYPE_IP_V4) {
+				tpl_ext_23_t *tpl = (tpl_ext_23_t *)next_data;
+				tpl->router_ip = ntohl(sample->agent_addr.address.ip_v4.s_addr);
+				next_data = (void *)tpl->data;
+				ClearFlag(common_record->flags, FLAG_IPV6_EXP);
+			} else {
+				tpl_ext_24_t *tpl = (tpl_ext_24_t *)next_data;
+				void *ptr = (void *)sample->agent_addr.address.ip_v6.s6_addr;
+				tpl->router_ip[0] = ntohll(((uint64_t *)ptr)[0]);
+				tpl->router_ip[1] = ntohll(((uint64_t *)ptr)[1]);
+				next_data = (void *)tpl->data;
+				SetFlag(common_record->flags, FLAG_IPV6_EXP);
+			}
 			break;
 			default: 
 				// this should never happen
@@ -1404,7 +1400,7 @@ static inline void skipTLVRecord(SFSample *sample, uint32_t tag, uint32_t len, c
 char buf[51];
 #endif
 
-	dbg_printf("skipping unknown %s: %s len=%d\n", description, printTag(tag, buf, 50), len);
+	dbg_printf("skipping unknown %s: 0x%x, %s len=%d\n", description, tag, printTag(tag, buf, 50), len);
 	skipBytes(sample, len);
 } // End of skipTLVRecord
 
@@ -2674,6 +2670,7 @@ int 		exceptionVal;
 		readSFlowDatagram(&sample, fs );
 	} else {
 		// CATCH
+		dbg_printf("SFLOW: caught exception: %d\n", exceptionVal);
 		syslog(LOG_ERR, "SFLOW: caught exception: %d\n", exceptionVal);
 	}
 	dbg_printf("endDatagram	 =================================\n");

@@ -153,6 +153,14 @@ typedef struct common_header_s {
 	uint16_t  	length;
 } common_header_t;
 
+#define _1byte    1
+#define _2bytes   2
+#define _3bytes   3
+#define _4bytes   4
+#define _6bytes   6
+#define _8bytes   8
+#define _16bytes  16
+
 #define NF9_TEMPLATE_FLOWSET_ID     0
 #define NF9_OPTIONS_FLOWSET_ID      1
 #define NF9_MIN_RECORD_FLOWSET_ID   256
@@ -187,6 +195,7 @@ typedef struct common_header_s {
 #define NF9_IPV6_SRC_MASK		29
 #define NF9_IPV6_DST_MASK		30
 
+#define NF9_IPV6_FLOW_LABEL		31
 #define NF9_ICMP_TYPE			32
 
 #define NF9_SAMPLING_INTERVAL	34

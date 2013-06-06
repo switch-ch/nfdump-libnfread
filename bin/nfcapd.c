@@ -94,6 +94,7 @@
 #include "netflow_v1.h"
 #include "netflow_v5_v7.h"
 #include "netflow_v9.h"
+#include "ipfix.h"
 
 #ifdef HAVE_FTS_H
 #   include <fts.h>
@@ -374,7 +375,7 @@ int 		err;
 char 		*string;
 srecord_t	*commbuff;
 
-	if ( !Init_v1() || !Init_v5_v7_input() || !Init_v9() )
+	if ( !Init_v1() || !Init_v5_v7_input() || !Init_v9() || !Init_IPFIX() )
 		return;
 
 	in_buff  = malloc(NETWORK_INPUT_BUFF_SIZE);
@@ -403,7 +404,7 @@ srecord_t	*commbuff;
 		}
 		// init vars
 		fs->bad_packets		= 0;
-		fs->first_seen 		= (uint64_t)0xffffffffffffLL;
+		fs->first_seen      = 0xffffffffffffLL;
 		fs->last_seen 		= 0;
 
 		// next source
@@ -514,7 +515,13 @@ srecord_t	*commbuff;
 				nfcapd_filename[MAXPATHLEN-1] = '\0';
 	
 				// update stat record
-				nffile->stat_record->first_seen 	= fs->first_seen/1000;
+				// if no flows were collected, fs->last_seen is still 0
+				// set first_seen to start of this time slot, with twin window size.
+				if ( fs->last_seen == 0 ) {
+					fs->first_seen = (uint64_t)1000 * (uint64_t)t_start;
+					fs->last_seen  = (uint64_t)1000 * (uint64_t)(t_start + twin);
+				}
+				nffile->stat_record->first_seen = fs->first_seen/1000;
 				nffile->stat_record->msec_first	= fs->first_seen - nffile->stat_record->first_seen*1000;
 				nffile->stat_record->last_seen 	= fs->last_seen/1000;
 				nffile->stat_record->msec_last	= fs->last_seen - nffile->stat_record->last_seen*1000;
@@ -564,7 +571,7 @@ srecord_t	*commbuff;
 
 				// reset stats
 				fs->bad_packets = 0;
-				fs->first_seen 	= 0xffffffffffffLL;
+				fs->first_seen  = 0xffffffffffffLL;
 				fs->last_seen 	= 0;
 
 				if ( !done ) {
@@ -677,7 +684,7 @@ srecord_t	*commbuff;
 				Process_v9(in_buff, cnt, fs);
 				break;
 			case 10: 
-				syslog(LOG_ERR,"Ident: %s, IPFIX not yet supported", fs->Ident);
+				Process_IPFIX(in_buff, cnt, fs);
 				break;
 			case 255:
 				// blast test header

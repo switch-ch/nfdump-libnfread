@@ -44,6 +44,7 @@
 #include <sys/stat.h>
 #include <sys/uio.h>
 #include <unistd.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <errno.h>
 #include <ctype.h>
@@ -69,6 +70,8 @@
 #include "nfstatfile.h"
 #include "expire.h"
 
+static uint32_t timeout = 0;
+
 /* 
  * expire.c is needed for daemon code as well as normal stdio code 
  * therefore a generic LogError is defined, which maps to the 
@@ -88,6 +91,41 @@ static int unlink_debug (const char *path) {
 	return 0;
 } // End of unlink_debug
 #endif
+
+static void IntHandler(int signal) {
+
+	switch (signal) {
+		case SIGALRM:
+			timeout = 1;
+			break;
+		case SIGHUP:
+		case SIGINT:
+		case SIGTERM:
+			timeout = 1;
+			break;
+			break;
+		case SIGCHLD:
+		default:
+			// ignore everything we don't know
+			break;
+	}
+
+} /* End of IntHandler */
+
+static void SetupSignalHandler(void) {
+struct sigaction act;
+
+	memset((void *)&act,0,sizeof(struct sigaction));
+	act.sa_handler = IntHandler;
+	sigemptyset(&act.sa_mask);
+	act.sa_flags = 0;
+	sigaction(SIGTERM, &act, NULL);
+	sigaction(SIGINT, &act, NULL);
+	sigaction(SIGHUP, &act, NULL);
+	sigaction(SIGALRM, &act, NULL);
+	sigaction(SIGCHLD, &act, NULL);
+
+} // End of SetupSignalHandler
 
 uint64_t ParseSizeDef(char *s, uint64_t *value) {
 char *p;
@@ -318,7 +356,7 @@ char		first_timestring[16], last_timestring[16];
 
 } // End of RescanDir
 
-void ExpireDir(char *dir, dirstat_t *dirstat, uint64_t maxsize, uint64_t maxlife ) {
+void ExpireDir(char *dir, dirstat_t *dirstat, uint64_t maxsize, uint64_t maxlife, uint32_t runtime ) {
 FTS 		*fts;
 FTSENT 		*ftsent;
 uint64_t	sizelimit, num_expired;
@@ -330,6 +368,10 @@ time_t 		now = time(NULL);
 	dir_files = 0;
 	if ( dirstat->low_water == 0 )
 		dirstat->low_water = 95;
+
+	SetupSignalHandler();
+	if ( runtime )
+		alarm(runtime);
 
 	if ( maxlife ) {
 		// build an appropriate string for comparing
@@ -432,7 +474,7 @@ time_t 		now = time(NULL);
 						lifetime_done = 1;
 					}
 				}
-				done = size_done && lifetime_done;
+				done = (size_done && lifetime_done) || timeout;
 
 			}
 		} else {
@@ -466,6 +508,11 @@ time_t 		now = time(NULL);
 		// this may be possible, when files get time-wise expired and
 		// the time limit is shorter than the latest file
 		dirstat->first = dirstat->last;
+	}
+	if ( runtime )
+		alarm(0);
+	if ( timeout ) {
+		LogError( "Maximum execution time reached! Interrupt expire.\n");
 	}
 	if ( num_expired > dirstat->numfiles ) {
 		LogError( "Error updating stat record: Number of files inconsistent!\n");
@@ -552,7 +599,7 @@ channel_t *current_channel = channel;
 
 } // End of PrepareDirLists
 
-void ExpireProfile(channel_t *channel, dirstat_t *current_stat, uint64_t maxsize, uint64_t maxlife ) {
+void ExpireProfile(channel_t *channel, dirstat_t *current_stat, uint64_t maxsize, uint64_t maxlife, uint32_t runtime ) {
 int  		size_done, lifetime_done, done;
 char 		*expire_timelimit = "";
 time_t		now = time(NULL);
@@ -562,6 +609,7 @@ uint64_t	sizelimit, num_expired;
 		return;
 
 	done = 0;
+	SetupSignalHandler();
 
 	if ( maxlife ) {
 //		time_t t_expire = now - maxlife;
@@ -582,6 +630,8 @@ uint64_t	sizelimit, num_expired;
 	num_expired = 0;
 
 	PrepareDirLists(channel);
+	if ( runtime )
+		alarm(runtime);
 	while ( !done ) {
 		char *p;
 		int file_removed;
@@ -678,6 +728,8 @@ uint64_t	sizelimit, num_expired;
 		} else 
 			// all done
 			done = 1;
+		if ( timeout ) 
+			done = 1;
 
 		// advance fts entry in expire channel to next file, if file was removed
 		if ( file_removed ) {
@@ -736,6 +788,12 @@ uint64_t	sizelimit, num_expired;
 			expire_channel->dirstat->status		= FORCE_REBUILD;
 		}
 	} // while ( !done )
+
+	if ( runtime )
+		alarm(0);
+	if ( timeout ) {
+		LogError( "Maximum execution time reached! Interrupt expire.\n");
+	}
 
 } // End of ExpireProfile
 

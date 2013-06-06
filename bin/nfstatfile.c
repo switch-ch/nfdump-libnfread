@@ -233,7 +233,7 @@ static void VerifyStatInfo(dirstat_t *statinfo) {
  *	dirname: 	directory to read the .nfstat file
  *	dirstat_p:	Assign a point of the result to this pointer
  *	lock:		READ_ONLY file is locked while reading, and unlocked and closed thereafter
- *				CRETAE_AND_LOCK if file does not exists, create it - continue as LOCK_IF_EXISTS
+ *				CREATE_AND_LOCK if file does not exists, create it - continue as LOCK_IF_EXISTS
  *				LOCK_IF_EXISTS: lock the file if it exists - file remains open
  * If file does not exists, an empty record is returned.
  */

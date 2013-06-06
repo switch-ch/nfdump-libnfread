@@ -654,23 +654,45 @@ extension_map_t	*extension_map = r->map_ref;
 "  msec_last    =             %5u\n"
 "  src addr     =  %16s\n"
 "  dst addr     =  %16s\n"
+, 
+		r->flags, TestFlag(r->flags, FLAG_SAMPLED) ? "Sampled" : "Unsampled", r->size, r->first, 
+		datestr1, r->last, datestr2, r->msec_first, r->msec_last, 
+		as, ds );
+
+	_slen = strlen(data_string);
+	_s = data_string + _slen;
+	slen = STRINGSIZE - _slen;
+
+	if ( r->prot == IPPROTO_ICMP || r->prot == IPPROTO_ICMPV6 ) { // ICMP
+		uint16_t type = r->dstport >> 8;
+		uint16_t code = r->dstport & 0xFF;
+		snprintf(_s, slen-1,
+"  ICMP         =              %2u.%-2u\n",
+		type, code);
+	} else {
+		snprintf(_s, slen-1,
 "  src port     =             %5u\n"
-"  dst port     =             %5u\n"
+"  dst port     =             %5u\n",
+		r->srcport, r->dstport);
+	}
+
+	_slen = strlen(data_string);
+	_s = data_string + _slen;
+	slen = STRINGSIZE - _slen;
+
+	snprintf(_s, slen-1,
 "  fwd status   =               %3u\n"
 "  tcp flags    =              0x%.2x %s\n"
 "  proto        =               %3u\n"
 "  (src)tos     =               %3u\n"
 "  (in)packets  =        %10llu\n"
-"  (in)bytes    =        %10llu\n"
-, 
-		r->flags, TestFlag(r->flags, FLAG_SAMPLED) ? "Sampled" : "Unsampled", r->size, r->first, 
-		datestr1, r->last, datestr2, r->msec_first, r->msec_last, 
-		as, ds, r->srcport, r->dstport, r->fwd_status, r->tcp_flags, flags_str, r->prot, r->tos,
+"  (in)bytes    =        %10llu\n",
+	r->fwd_status, r->tcp_flags, flags_str, r->prot, r->tos,
 		(unsigned long long)r->dPkts, (unsigned long long)r->dOctets);
 
 	_slen = strlen(data_string);
-	_s += _slen;
-	slen -= _slen;
+	_s = data_string + _slen;
+	slen = STRINGSIZE - _slen;
 	
 	i = 0;
 	while ( (id = extension_map->ex_id[i]) != 0 ) {
@@ -2132,7 +2154,7 @@ uint64_t	bps;
 char s[32];
 
 	if ( duration ) {
-		bps = ( r->dOctets << 3 ) / duration;	// bits per second. ( >> 3 ) -> * 8 to convert octets into bits
+		bps = (( r->dOctets << 3 ) / duration);	// bits per second. ( >> 3 ) -> * 8 to convert octets into bits
 	} else {
 		bps = 0;
 	}

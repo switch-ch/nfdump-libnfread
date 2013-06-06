@@ -382,7 +382,7 @@ int ret, update_ok;
 
 			stat(profile_channels[num].ofile, &fstat);
 
-			ret = ReadStatInfo(profile_channels[num].dirstat_path, &dirstat, LOCK_IF_EXISTS);
+			ret = ReadStatInfo(profile_channels[num].dirstat_path, &dirstat, CREATE_AND_LOCK);
 			update_ok = ret == STATFILE_OK;
 
 	

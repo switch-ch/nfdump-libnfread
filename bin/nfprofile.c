@@ -123,6 +123,10 @@ int	v1_map_done = 0;
 		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
+	if ( nffile == EMPTY_LIST ) {
+		LogError("Empty file list. No files to process\n");
+		return;
+	}
 
 	// store infos away for later use
 	// although multiple files may be processed, it is assumed that all 

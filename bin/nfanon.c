@@ -185,6 +185,10 @@ int	v1_map_done = 0;
 		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return;
 	}
+	if ( nffile_r == EMPTY_LIST ) {
+		LogError("Empty file list. No files to process\n");
+		return;
+	}
 
 	cfile = GetCurrentFilename();
 	if ( !cfile ) {
@@ -193,7 +197,7 @@ int	v1_map_done = 0;
 			outfile[1] = '\0';
 			verbose = 0;
 		} else {
-			fprintf(stderr, "(NULL) input file name error in %s line %d\n", __FILE__, __LINE__);
+			LogError("(NULL) input file name error in %s line %d\n", __FILE__, __LINE__);
 			return;
 		}
 	} else {

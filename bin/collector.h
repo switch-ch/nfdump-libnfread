@@ -95,8 +95,8 @@ typedef struct FlowSource_s {
 
 	// statistical data per source
 	uint32_t			bad_packets;
-	uint64_t			first_seen;
-	uint64_t			last_seen;
+	uint64_t			first_seen;		// in msec 
+	uint64_t			last_seen;		// in msec
 
 	// port histogram data
 	xstat_t				*xstat;

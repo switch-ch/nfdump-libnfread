@@ -176,7 +176,7 @@ int i;
 		(*c)->datadir = dirlist.list[i];
 		(*c)->do_rescan = do_rescan;
 
-		ret = ReadStatInfo((*c)->datadir, &(*c)->dirstat, CRETAE_AND_LOCK);
+		ret = ReadStatInfo((*c)->datadir, &(*c)->dirstat, CREATE_AND_LOCK);
 		switch (ret) {
 			case FORCE_REBUILD:
 				printf("Force rebuild requested by stat record in %s\n", (*c)->datadir);
@@ -213,6 +213,7 @@ int 		c, err, maxsize_set, maxlife_set;
 int			do_rescan, do_expire, do_list, print_stat, do_update_param, print_books, is_profile, nfsen_format;
 char		*maxsize_string, *lifetime_string, *datadir;
 uint64_t	maxsize, lifetime, low_water;
+uint32_t	runtime;
 channel_t	*channel, *current_channel;
 
 	maxsize_string = lifetime_string = NULL;
@@ -229,8 +230,9 @@ channel_t	*channel, *current_channel;
 	maxlife_set 	= 0;
 	low_water		= 0;
 	nfsen_format	= 0;
+	runtime			= 0;
 
-	while ((c = getopt(argc, argv, "e:hl:L:Ypr:s:t:u:w:")) != EOF) {
+	while ((c = getopt(argc, argv, "e:hl:L:T:Ypr:s:t:u:w:")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -286,6 +288,13 @@ channel_t	*channel, *current_channel;
 				}
 				if ( low_water == 0 )
 					low_water = 100;
+				break;
+			case 'T':
+				runtime = strtoll(optarg, NULL, 10);
+				if ( runtime > 3600 ) {
+					fprintf(stderr, "Runtime > 3600 (1h)\n");
+					exit(250);
+				}
 				break;
 			case 'Y':
 				nfsen_format = 1;
@@ -409,7 +418,7 @@ channel_t	*channel, *current_channel;
 				current_channel = current_channel->next;
 			}
 			old_stat = current_stat;
-			ExpireProfile(channel, &current_stat, maxsize, lifetime);
+			ExpireProfile(channel, &current_stat, maxsize, lifetime, runtime);
 
 		} else {
 			// cmd args override dirstat values
@@ -424,7 +433,7 @@ channel_t	*channel, *current_channel;
 	
 		
 			old_stat = *(channel->dirstat);
-			ExpireDir(channel->datadir, channel->dirstat, maxsize, lifetime);
+			ExpireDir(channel->datadir, channel->dirstat, maxsize, lifetime, runtime);
 			current_stat = *(channel->dirstat);
 
 		}

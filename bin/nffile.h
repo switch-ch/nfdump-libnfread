@@ -321,6 +321,8 @@ typedef struct common_record_s {
 } common_record_t;
 #define COMMON_RECORD_DATA_SIZE (sizeof(common_record_t) - sizeof(uint32_t) )
 
+#define COMMON_BLOCK	0
+
  /* 
  * Required extensions:
  * --------------------

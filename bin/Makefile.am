@@ -41,6 +41,7 @@ anon = panonymizer.c panonymizer.h rijndael.c rijndael.h
 collector = collector.c collector.h
 nfv1 = netflow_v1.c netflow_v1.h
 nfv9 = netflow_v9.c netflow_v9.h
+ipfix = ipfix.c ipfix.h
 nfv5v7 = netflow_v5_v7.c netflow_v5_v7.h
 nfstatfile = nfstatfile.c nfstatfile.h
 nflowcache = nflowcache.c nflowcache.h
@@ -66,7 +67,7 @@ nftrack_LDADD = -lrrd
 
 nfcapd_SOURCES = nfcapd.c \
 	$(common) $(util) $(filelzo) $(nflist) $(nfstatfile) $(launch) \
-	$(nfnet) $(collector) $(nfv1) $(nfv9) $(nfv5v7) $(bookkeeper) $(expire)
+	$(nfnet) $(collector) $(nfv1) $(nfv5v7) $(nfv9) $(ipfix) $(bookkeeper) $(expire)
 
 if READPCAP
 nfcapd_CFLAGS = -DPCAP
