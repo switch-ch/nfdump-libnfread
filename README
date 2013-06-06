@@ -1,7 +1,19 @@
 
+Inofficial fork of nfdump with libnfread based on:
 Stable Release v1.6.10
 
 See the Changelog file for all changes in release 1.6.10
+
+Notes on libnfread
+------------------
+
+This is an inofficial fork of nfdump containing libnfread, a library
+designed to read netflow records from nfdump files using the codebase
+of nfdump.  We make this library public in order to allow others to
+use it as long as nfdump does not contain an official library interface.
+The library is build and installed along with the binaries.
+Documentation can be found in the installed nfread/nfread.h header file.
+Example code using the library is included under extra/libnfread-example.
 
 Notes on NSEL/ASA support
 -------------------------
