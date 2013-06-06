@@ -371,6 +371,11 @@ if test "$ac_cv_header_stddef_h" = "yes"; then
 else
 	AC_SUBST([HAVE_STDDEF_H], [0])
 fi
+if test "$ac_cv_header_sys_types_h" = "yes"; then
+	AC_SUBST([HAVE_SYS_TYPES_H], [1])
+else
+	AC_SUBST([HAVE_SYS_TYPES_H], [0])
+fi
 if test "$ac_cv_c_bigendian" = "yes"; then
 	AC_SUBST([WORDS_BIGENDIAN], [1])
 else

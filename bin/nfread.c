@@ -111,7 +111,7 @@ nfread_iterate_flowrecord(common_record_t *flowrec,
 		return itercb(NULL, NFREAD_ECORRUPT, GetCurrentFilename(), arg);
 	}
 
-	ExpandRecord_v2(flowrec, extmaps->slot[flowrec->ext_map], &mrec);
+	ExpandRecord_v2(flowrec, extmaps->slot[flowrec->ext_map], NULL, &mrec);
 	/* update number of flows matching a given map */
 	extmaps->slot[flowrec->ext_map]->ref_count++;
 	if (fltengine) {
@@ -182,7 +182,7 @@ __attribute__((visibility("default")))
 int
 nfread_iterate(nfread_iterate_cb_t itercb, void *arg, const char *fltexpr)
 {
-	extension_map_list_t extmaps;
+	extension_map_list_t *extmaps;
 	nffile_t *nffile;
 	FilterEngine_data_t *fltengine;
 
@@ -195,9 +195,9 @@ nfread_iterate(nfread_iterate_cb_t itercb, void *arg, const char *fltexpr)
 
 	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
 
-	InitExtensionMaps(&extmaps);
+	extmaps = InitExtensionMaps(NEEDS_EXTENSION_LIST);
 
-	while (nfread_iterate_file(nffile, fltengine, &extmaps, itercb, arg)
+	while (nfread_iterate_file(nffile, fltengine, extmaps, itercb, arg)
 	       == NFREAD_LOOP_NEXT) {
 		nffile_t *next = GetNextFile(nffile, 0, 0);
 		if (next == EMPTY_LIST) {
@@ -211,7 +211,7 @@ nfread_iterate(nfread_iterate_cb_t itercb, void *arg, const char *fltexpr)
 
 	CloseFile(nffile);
 	DisposeFile(nffile);
-	PackExtensionMapList(&extmaps);
+	PackExtensionMapList(extmaps);
 	return 0;
 }
 
@@ -281,14 +281,14 @@ int
 nfread_file_iterate(nffile_t *nffile, nfread_iterate_cb_t itercb,
                     void *arg, const char *fltexpr)
 {
-	extension_map_list_t extmaps;
+	extension_map_list_t *extmaps;
 	FilterEngine_data_t *fltengine;
 	int rv;
 
 	fltengine = fltexpr ? CompileFilter((char*)fltexpr) : NULL;
-	InitExtensionMaps(&extmaps);
-	rv = nfread_iterate_file(nffile, fltengine, &extmaps, itercb, arg);
-	PackExtensionMapList(&extmaps);
+	extmaps = InitExtensionMaps(NEEDS_EXTENSION_LIST);
+	rv = nfread_iterate_file(nffile, fltengine, extmaps, itercb, arg);
+	PackExtensionMapList(extmaps);
 	return (rv == NFREAD_LOOP_NEXT) ? 0 : -1;
 }
 
