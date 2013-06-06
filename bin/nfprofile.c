@@ -62,11 +62,17 @@
 #include "nfx.h"
 #include "nfstat.h"
 #include "nfstatfile.h"
+#include "bookkeeper.h"
 #include "nfxstat.h"
+#include "collector.h"
+#include "exporter.h"
 #include "ipconv.h"
 #include "flist.h"
 #include "util.h"
 #include "profile.h"
+
+/* externals */
+extern generic_exporter_t **exporter_list;
 
 /* Local Variables */
 static const char *nfdump_version = VERSION;
@@ -220,62 +226,100 @@ int	v1_map_done = 0;
 
 		flow_record = nffile->buff_ptr;
 		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
-			if ( flow_record->type == CommonRecordType ) {
-				if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
-					LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
-					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
-					continue;
-				} 
-
-				ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
-
-				for ( j=0; j < num_channels; j++ ) {
-					int match;
-
-					// apply profile filter
-					engine = channels[j].engine;
-					match = (*engine->FilterEngine)(engine);
-
-					// if profile filter failed -> next profile
-					if ( !match )
+			switch ( flow_record->type ) { 
+					case CommonRecordType: {
+					generic_exporter_t *exp_info = exporter_list[flow_record->exporter_sysid];
+					if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
+						LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
+						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 						continue;
-
-					// filter was successful -> continue record processing
-
-					// update statistics
-					UpdateStat(&channels[j].stat_record, &master_record);
-					if ( channels[j].nffile ) 
-						UpdateStat(channels[j].nffile->stat_record, &master_record);
-
-					if ( channels[j].xstat ) 
-						UpdateXStat(channels[j].xstat, &master_record);
-
-					// do we need to write data to new file - shadow profiles do not have files.
-					// check if we need to flush the output buffer
-					if ( channels[j].nffile != NULL ) {
-						// write record to output buffer
-						AppendToBuffer(channels[j].nffile, (void *)flow_record, flow_record->size);
 					} 
+	
+					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], 
+						exp_info ? &(exp_info->info) : NULL, &master_record);
 
-				} // End of for all channels
-
-			} else if ( flow_record->type == ExtensionMapType ) {
-				extension_map_t *map = (extension_map_t *)flow_record;
-
-				if ( Insert_Extension_Map(&extension_map_list, map) ) {
-					int j;
 					for ( j=0; j < num_channels; j++ ) {
+						int match;
+	
+						// apply profile filter
+						engine = channels[j].engine;
+						match = (*engine->FilterEngine)(engine);
+	
+						// if profile filter failed -> next profile
+						if ( !match )
+							continue;
+	
+						// filter was successful -> continue record processing
+	
+						// update statistics
+						UpdateStat(&channels[j].stat_record, &master_record);
+						if ( channels[j].nffile ) 
+							UpdateStat(channels[j].nffile->stat_record, &master_record);
+	
+						if ( channels[j].xstat ) 
+							UpdateXStat(channels[j].xstat, &master_record);
+	
+						// do we need to write data to new file - shadow profiles do not have files.
+						// check if we need to flush the output buffer
 						if ( channels[j].nffile != NULL ) {
-							// flush new map
-							AppendToBuffer(channels[j].nffile, (void *)map, map->size);
+							// write record to output buffer
+							AppendToBuffer(channels[j].nffile, (void *)flow_record, flow_record->size);
+						} 
+	
+					} // End of for all channels
+	
+					} break;
+				case ExtensionMapType: {
+					extension_map_t *map = (extension_map_t *)flow_record;
+	
+					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+						int j;
+						for ( j=0; j < num_channels; j++ ) {
+							if ( channels[j].nffile != NULL ) {
+								// flush new map
+								AppendToBuffer(channels[j].nffile, (void *)map, map->size);
+							}
 						}
+					} // else map already known and flushed
+	
+					} break; 
+				case ExporterInfoRecordType: {
+					int ret = AddExporterInfo((exporter_info_record_t *)flow_record);
+					if ( ret != 0 ) {
+						int j;
+						for ( j=0; j < num_channels; j++ ) {
+							if ( channels[j].nffile != NULL && ret == 1) {
+								// flush new exporter
+								AppendToBuffer(channels[j].nffile, (void *)flow_record, flow_record->size);
+							}
+						}
+					} else {
+						LogError("Failed to add Exporter Record\n");
 					}
-				} // else map already known and flushed
-
-			} else {
-				LogError("Skip unknown record type %i\n", flow_record->type);
+					} break;
+				case SamplerInfoRecordype: {
+					int ret = AddSamplerInfo((sampler_info_record_t *)flow_record);
+					if ( ret != 0 ) {
+						int j;
+						for ( j=0; j < num_channels; j++ ) {
+							if ( channels[j].nffile != NULL && ret == 1 ) {
+								// flush new map
+								AppendToBuffer(channels[j].nffile, (void *)flow_record, flow_record->size);
+							}
+						}
+					} else {
+						LogError("Failed to add Sampler Record\n");
+					}
+					} break;
+				case ExporterRecordType:
+				case SamplerRecordype:
+				case ExporterStatRecordType:
+						// Silently skip exporter records
+					break;
+				default:  {
+					LogError("Skip unknown record type %i\n", flow_record->type);
+				}
 			}
-
 			// Advance pointer by number of bytes for netflow record
 			flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);
 
@@ -620,6 +664,9 @@ time_t tslot;
 	}
 
 	InitExtensionMaps(&extension_map_list);
+	if ( !InitExporterList() ) {
+		exit(255);
+	}
 
 	SetupInputFileSequence(Mdirs,rfile, NULL);
 

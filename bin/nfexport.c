@@ -61,6 +61,7 @@
 #include "nfstat.h"
 #include "nfxstat.h"
 #include "nflowcache.h"
+#include "exporter.h"
 
 #include "nfexport.h"
 
@@ -78,9 +79,9 @@ enum CntIndices { FLOWS = 0, INPACKETS, INBYTES, OUTPACKETS, OUTBYTES };
 
 static extension_map_t	**export_maps;
 
-static void CreateExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile );
+static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile );
 
-static void CreateExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile ) {
+static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile ) {
 int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 
 	// no extension maps to export - nothing to do
@@ -235,7 +236,7 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 
 	}
 
-} // End of CreateExportExtensionMaps
+} // End of ExportExtensionMaps
 
 int ExportFlowTable(nffile_t *nffile, int aggregate, int bidir, int date_sorted) {
 hash_FlowTable *FlowTable;
@@ -248,7 +249,8 @@ uint32_t			maxindex, c;
 char				*string;
 #endif
 
-	CreateExportExtensionMaps(aggregate, bidir, nffile);
+	ExportExtensionMaps(aggregate, bidir, nffile);
+	ExportExporterList(nffile);
 
 	aggr_record_mask = GetMasterAggregateMask();
 
@@ -297,7 +299,7 @@ char				*string;
 			map_id = r->map_ref->map_id;
 
 			flow_record = &(extension_map_list.slot[map_id]->master_record);
-			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], flow_record);
+			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
 			flow_record->dPkts 		= r->counter[INPACKETS];
 			flow_record->dOctets 	= r->counter[INBYTES];
 			flow_record->out_pkts 	= r->counter[OUTPACKETS];
@@ -344,7 +346,7 @@ char				*string;
 				map_id = r->map_ref->map_id;
 
 				flow_record = &(extension_map_list.slot[map_id]->master_record);
-				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], flow_record);
+				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
 				flow_record->dPkts 		= r->counter[INPACKETS];
 				flow_record->dOctets 	= r->counter[INBYTES];
 				flow_record->out_pkts 	= r->counter[OUTPACKETS];

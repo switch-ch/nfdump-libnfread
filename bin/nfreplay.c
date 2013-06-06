@@ -68,6 +68,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "netflow_v5_v7.h"
 #include "netflow_v9.h"
 #include "nfprof.h"
@@ -99,6 +100,8 @@ static const char *nfdump_version = VERSION;
 send_peer_t peer;
 
 extension_map_list_t extension_map_list;
+
+generic_exporter_t **exporter_list;
 
 /* Function Prototypes */
 static void usage(char *name);
@@ -318,75 +321,85 @@ int	v1_map_done = 0;
 		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			int match;
 
-			if ( flow_record->type == CommonRecordType ) {
-				if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
-					LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
-					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
-					continue;
-				} 
+			switch ( flow_record->type ) {
+				case CommonRecordType: {
+					if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
+						LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
+						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
+						continue;
+					} 
 
-				// if no filter is given, the result is always true
-				ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
+					// if no filter is given, the result is always true
+					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], NULL, &master_record);
 
-				match = twin_start && (master_record.first < twin_start || master_record.last > twin_end) ? 0 : 1;
+					match = twin_start && (master_record.first < twin_start || master_record.last > twin_end) ? 0 : 1;
 
-				// filter netflow record with user supplied filter
-				if ( match ) 
-					match = (*Engine->FilterEngine)(Engine);
-
-				if ( match == 0 ) { // record failed to pass all filters
-					// increment pointer by number of bytes for netflow record
-					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
-					// go to next record
-					continue;
-				}
-				// Records passed filter -> continue record processing
-
-				if ( netflow_version == 5 ) 
-					again = Add_v5_output_record(&master_record, &peer);
-				else
-					again = Add_v9_output_record(&master_record, &peer);
-
-				cnt++;
-				numflows++;
-
-				if ( peer.flush ) {
-					ret = FlushBuffer(confirm);
+					// filter netflow record with user supplied filter
+					if ( match ) 
+						match = (*Engine->FilterEngine)(Engine);
 	
-					if ( ret < 0 ) {
-						perror("Error sending data");
-						CloseFile(nffile);
-						DisposeFile(nffile);
-						return;
+					if ( match == 0 ) { // record failed to pass all filters
+						// increment pointer by number of bytes for netflow record
+						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
+						// go to next record
+						continue;
 					}
-		
-					if ( delay ) {
-						// sleep as specified
-						usleep(delay);
-					}
-					cnt = 0;
-				}
+					// Records passed filter -> continue record processing
 
-				if ( again ) {
 					if ( netflow_version == 5 ) 
-						Add_v5_output_record(&master_record, &peer);
+						again = Add_v5_output_record(&master_record, &peer);
 					else
-						Add_v9_output_record(&master_record, &peer);
+						again = Add_v9_output_record(&master_record, &peer);
+	
 					cnt++;
+					numflows++;
+
+					if ( peer.flush ) {
+						ret = FlushBuffer(confirm);
+	
+						if ( ret < 0 ) {
+							perror("Error sending data");
+							CloseFile(nffile);
+							DisposeFile(nffile);
+							return;
+						}
+			
+						if ( delay ) {
+							// sleep as specified
+							usleep(delay);
+						}
+						cnt = 0;
+					}
+	
+					if ( again ) {
+						if ( netflow_version == 5 ) 
+							Add_v5_output_record(&master_record, &peer);
+						else
+							Add_v9_output_record(&master_record, &peer);
+						cnt++;
+					}
+
+					} break;
+				case ExtensionMapType: {
+					extension_map_t *map = (extension_map_t *)flow_record;
+	
+					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+						// flush new map
+						
+					} // else map already known and flushed
+	
+					} break;
+				case ExporterRecordType:
+				case SamplerRecordype:
+				case ExporterInfoRecordType:
+				case ExporterStatRecordType:
+				case SamplerInfoRecordype:
+						// Silently skip exporter/sampler records
+					break;
+			 	default: {
+					LogError("Skip unknown record type %i\n", flow_record->type);
 				}
-
-			} else if ( flow_record->type == ExtensionMapType ) {
-				extension_map_t *map = (extension_map_t *)flow_record;
-
-				if ( Insert_Extension_Map(&extension_map_list, map) ) {
-					// flush new map
-					
-				} // else map already known and flushed
-
-			} else {
-				LogError("Skip unknown record type %i\n", flow_record->type);
 			}
-
 			// Advance pointer by number of bytes for netflow record
 			flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 

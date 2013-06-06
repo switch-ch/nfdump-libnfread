@@ -52,6 +52,7 @@
 #include <fcntl.h>
 #include <sys/resource.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
@@ -63,8 +64,10 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "nf_common.h"
 #include "netflow_v5_v7.h"
+#include "netflow_v9.h"
 #include "rbtree.h"
 #include "nftree.h"
 #include "nfprof.h"
@@ -98,11 +101,14 @@ static uint32_t	is_anonymized;
 static time_t 	t_first_flow, t_last_flow;
 static char		Ident[IDENTLEN];
 
+
 int hash_hit = 0; 
 int hash_miss = 0;
 int hash_skip = 0;
 
 extension_map_list_t extension_map_list;
+
+extern generic_exporter_t **exporter_list;
 /*
  * Output Formats:
  * User defined output formats can be compiled into nfdump, for easy access
@@ -198,11 +204,7 @@ extension_map_list_t extension_map_list;
 
 // Assign print functions for all output options -o
 // Teminated with a NULL record
-struct printmap_s {
-	char		*printmode;		// name of the output format
-	printer_t	func;			// name of the function, which prints the record
-	char		*Format;		// output format definition
-} printmap[] = {
+printmap_t printmap[] = {
 	{ "raw",		format_file_block_record,  	NULL 			},
 	{ "line", 		format_special,      		FORMAT_line 	},
 	{ "long", 		format_special, 			FORMAT_long 	},
@@ -230,7 +232,6 @@ struct printmap_s {
 static void usage(char *name);
 
 static void PrintSummary(stat_record_t *stat_record, int plain_numbers, int csv_output);
-
 
 static stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
@@ -284,6 +285,7 @@ static void usage(char *name) {
 					"\t\t csv      ',' separated, machine parseable output format.\n"
 					"\t\t pipe     '|' separated legacy machine parseable output format.\n"
 					"\t\t\tmode may be extended by '6' for full IPv6 listing. e.g.long6, extended6.\n"
+					"-E <file>\tPrint exporter ans sampling info for collected flows.\n"
 					"-v <file>\tverify netflow data file. Print version and blocks.\n"
 					"-x <file>\tverify extension records in netflow data file.\n"
 					"-X\t\tDump Filtertable and exit (debug option).\n"
@@ -470,7 +472,7 @@ int	v1_map_done = 0;
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
 				if ( ! map ) {
-					perror("Memory allocation error");
+					LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 					exit(255);
 				}
 				map->type 	= ExtensionMapType;
@@ -527,95 +529,122 @@ int	v1_map_done = 0;
 		flow_record = nffile_r->buff_ptr;
 		for ( i=0; i < nffile_r->block_header->NumRecords; i++ ) {
 
-			if ( flow_record->type == CommonRecordType ) {
-				int match;
-				uint32_t map_id = flow_record->ext_map;
-				if ( map_id >= MAX_EXTENSION_MAPS ) {
-					LogError("Corrupt data file. Extension map id %u too big.\n", flow_record->ext_map);
-					exit(255);
-				}
-				if ( extension_map_list.slot[map_id] == NULL ) {
-					LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
-					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
-					continue;
-				} 
-
-				total_flows++;
-				master_record = &(extension_map_list.slot[map_id]->master_record);
-				Engine->nfrecord = (uint64_t *)master_record;
-				ExpandRecord_v2( flow_record, extension_map_list.slot[map_id], master_record);
-
-				// Time based filter
-				// if no time filter is given, the result is always true
-				match  = twin_start && (master_record->first < twin_start || master_record->last > twin_end) ? 0 : 1;
-				match &= limitflows ? stat_record.numflows < limitflows : 1;
-
-				// filter netflow record with user supplied filter
-				if ( match ) 
-					match = (*Engine->FilterEngine)(Engine);
-
-				if ( match == 0 ) { // record failed to pass all filters
-					// increment pointer by number of bytes for netflow record
-					flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
-					// go to next record
-					continue;
-				}
-
-				// Records passed filter -> continue record processing
-				// Update statistics
-				UpdateStat(&stat_record, master_record);
-
-				// update number of flows matching a given map
-				extension_map_list.slot[map_id]->ref_count++;
-
-				if ( flow_stat ) {
-					AddFlow(flow_record, master_record);
-					if ( element_stat ) {
-						AddStat(flow_record, master_record);
-					} 
-				} else if ( element_stat ) {
-					AddStat(flow_record, master_record);
-				} else if ( sort_flows ) {
-					InsertFlow(flow_record, master_record);
-				} else {
-
-
-					if ( write_file ) {
-						AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
-						if ( xstat ) 
-							UpdateXStat(xstat, master_record);
-
-					} else if ( print_record ) {
-						char *string;
-						// if we need to print out this record
-						print_record(master_record, &string, tag);
-						if ( string ) {
-							if ( limitflows ) {
-								if ( (stat_record.numflows <= limitflows) )
-									printf("%s\n", string);
-							} else 
-								printf("%s\n", string);
-						}
-					} else { 
-						// mutually exclusive conditions should prevent executing this code
-						// this is buggy!
-						printf("Bug! - this code should never get executed in file %s line %d\n", __FILE__, __LINE__);
+			switch ( flow_record->type ) {
+				case CommonRecordType:  {
+					int match;
+					uint32_t map_id = flow_record->ext_map;
+					generic_exporter_t *exp_info = exporter_list[flow_record->exporter_sysid];
+					if ( map_id >= MAX_EXTENSION_MAPS ) {
+						LogError("Corrupt data file. Extension map id %u too big.\n", flow_record->ext_map);
+						exit(255);
 					}
-				} // sort_flows - else
+					if ( extension_map_list.slot[map_id] == NULL ) {
+						LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
+						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
+						continue;
+					} 
 
-			} else if ( flow_record->type == ExtensionMapType ) {
-				extension_map_t *map = (extension_map_t *)flow_record;
+					total_flows++;
+					master_record = &(extension_map_list.slot[map_id]->master_record);
+					Engine->nfrecord = (uint64_t *)master_record;
+					ExpandRecord_v2( flow_record, extension_map_list.slot[map_id], 
+						exp_info ? &(exp_info->info) : NULL, master_record);
 
-				if ( Insert_Extension_Map(&extension_map_list, map) && write_file ) {
-					// flush new map
-					AppendToBuffer(nffile_w, (void *)map, map->size);
-				} // else map already known and flushed
-			} else {
-				LogError("Skip unknown record type %i\n", flow_record->type);
+					// Time based filter
+					// if no time filter is given, the result is always true
+					match  = twin_start && (master_record->first < twin_start || master_record->last > twin_end) ? 0 : 1;
+					match &= limitflows ? stat_record.numflows < limitflows : 1;
+
+					// filter netflow record with user supplied filter
+					if ( match ) 
+						match = (*Engine->FilterEngine)(Engine);
+	
+					if ( match == 0 ) { // record failed to pass all filters
+						// increment pointer by number of bytes for netflow record
+						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
+						// go to next record
+						continue;
+					}
+
+					// Records passed filter -> continue record processing
+					// Update statistics
+					UpdateStat(&stat_record, master_record);
+
+					// update number of flows matching a given map
+					extension_map_list.slot[map_id]->ref_count++;
+	
+					if ( flow_stat ) {
+						AddFlow(flow_record, master_record);
+						if ( element_stat ) {
+							AddStat(flow_record, master_record);
+						} 
+					} else if ( element_stat ) {
+						AddStat(flow_record, master_record);
+					} else if ( sort_flows ) {
+						InsertFlow(flow_record, master_record);
+					} else {
+						if ( write_file ) {
+							AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
+							if ( xstat ) 
+								UpdateXStat(xstat, master_record);
+						} else if ( print_record ) {
+							char *string;
+							// if we need to print out this record
+							print_record(master_record, &string, tag);
+							if ( string ) {
+								if ( limitflows ) {
+									if ( (stat_record.numflows <= limitflows) )
+										printf("%s\n", string);
+								} else 
+									printf("%s\n", string);
+							}
+						} else { 
+							// mutually exclusive conditions should prevent executing this code
+							// this is buggy!
+							printf("Bug! - this code should never get executed in file %s line %d\n", __FILE__, __LINE__);
+						}
+					} // sort_flows - else
+					} break; 
+				case ExtensionMapType: {
+					extension_map_t *map = (extension_map_t *)flow_record;
+	
+					if ( Insert_Extension_Map(&extension_map_list, map) && write_file ) {
+						// flush new map
+						AppendToBuffer(nffile_w, (void *)map, map->size);
+					} // else map already known and flushed
+					} break;
+				case ExporterRecordType:
+				case SamplerRecordype:
+						// Silently skip exporter records
+					break;
+				case ExporterInfoRecordType: {
+					int ret = AddExporterInfo((exporter_info_record_t *)flow_record);
+					if ( ret != 0 ) {
+						if ( write_file && ret == 1 ) 
+							AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
+					} else {
+						LogError("Failed to add Exporter Record\n");
+					}
+					} break;
+				case ExporterStatRecordType:
+					AddExporterStat((exporter_stats_record_t *)flow_record);
+					break;
+				case SamplerInfoRecordype: {
+					int ret = AddSamplerInfo((sampler_info_record_t *)flow_record);
+					if ( ret != 0 ) {
+						if ( write_file && ret == 1 ) 
+							AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
+					} else {
+						LogError("Failed to add Sampler Record\n");
+					}
+					} break;
+				default: {
+					LogError("Skip unknown record type %i\n", flow_record->type);
+				}
 			}
 
-			// Advance pointer by number of bytes for netflow record
-			flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
+		// Advance pointer by number of bytes for netflow record
+		flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 
 
 		} // for all records
@@ -666,8 +695,8 @@ stat_record_t	sum_stat;
 printer_t 	print_header, print_record;
 nfprof_t 	profile_data;
 char 		*rfile, *Rfile, *Mdirs, *wfile, *ffile, *filter, *tstring, *stat_type;
-char		*byte_limit_string, *packet_limit_string, *print_mode, *record_header;
-char		*order_by, *query_file, *UnCompress_file, *nameserver, *aggr_fmt;
+char		*byte_limit_string, *packet_limit_string, *print_format, *record_header;
+char		*print_order, *query_file, *UnCompress_file, *nameserver, *aggr_fmt;
 int 		c, ffd, ret, element_stat, fdump;
 int 		i, user_format, quiet, flow_stat, topN, aggregate, aggregate_mask, bidir;
 int 		print_stat, syntax_only, date_sorted, do_tag, compress, do_xstat;
@@ -706,9 +735,10 @@ char 		Ident[IDENTLEN];
 	GuessDir		= 0;
 	nameserver		= NULL;
 
-	print_mode      = NULL;
+	print_format    = NULL;
 	print_header 	= NULL;
 	print_record  	= NULL;
+	print_order  	= NULL;
 	query_file		= NULL;
 	UnCompress_file	= NULL;
 	aggr_fmt		= NULL;
@@ -717,11 +747,9 @@ char 		Ident[IDENTLEN];
 
 	Ident[0] = '\0';
 
-	SetStat_DefaultOrder("flows");
-
 	for ( i=0; i<AGGR_SIZE; AggregateMasks[i++] = 0 ) ;
 
-	while ((c = getopt(argc, argv, "6aA:Bbc:D:s:hHn:i:j:f:qzr:v:w:K:M:NImO:R:XZt:TVv:x:l:L:o:")) != EOF) {
+	while ((c = getopt(argc, argv, "6aA:Bbc:D:E:s:hHn:i:j:f:qzr:v:w:K:M:NImO:R:XZt:TVv:x:l:L:o:")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -751,6 +779,14 @@ char 		Ident[IDENTLEN];
 				if ( !set_nameserver(nameserver) ) {
 					exit(255);
 				}
+				break;
+			case 'E':
+				query_file = optarg;
+				if ( !InitExporterList() ) {
+					exit(255);
+				}
+				PrintExporters(query_file);
+				exit(0);
 				break;
 			case 'X':
 				fdump = 1;
@@ -809,7 +845,9 @@ char 		Ident[IDENTLEN];
 					rfile = NULL;
 				break;
 			case 'm':
+				Parse_PrintOrder("tstart");
 				date_sorted = 1;
+				LogError("Option -m depricated. Use '-O tstart' instead\n");
 				break;
 			case 'M':
 				Mdirs = optarg;
@@ -818,15 +856,18 @@ char 		Ident[IDENTLEN];
 				print_stat++;
 				break;
 			case 'o':	// output mode
-				print_mode = optarg;
+				print_format = optarg;
 				break;
-			case 'O':	// stat order by
-				order_by = optarg;
-				if ( !SetStat_DefaultOrder(order_by) ) {
-					LogError("Order '%s' unknown!\n", order_by);
+			case 'O': {	// stat order by
+				int ret;
+				print_order = optarg;
+				ret = Parse_PrintOrder(print_order);
+				if ( ret < 0 ) {
+					LogError("Unknown print order '%s'\n", print_order);
 					exit(255);
 				}
-				break;
+				date_sorted = ret == 6;		// index into order_mode
+				} break;
 			case 'R':
 				Rfile = optarg;
 				break;
@@ -858,6 +899,7 @@ char 		Ident[IDENTLEN];
 				break;
 			case 'x':
 				query_file = optarg;
+				InitExtensionMaps(NULL);
 				DumpExMaps(query_file);
 				exit(0);
 				break;
@@ -908,6 +950,9 @@ char 		Ident[IDENTLEN];
 	}
 
 	InitExtensionMaps(&extension_map_list);
+	if ( !InitExporterList() ) {
+		exit(255);
+	}
 
 	SetupInputFileSequence(Mdirs, rfile, Rfile);
 
@@ -935,29 +980,29 @@ char 		Ident[IDENTLEN];
 	}
 
 	// handle print mode
-	if ( !print_mode ) {
+	if ( !print_format ) {
 		// automatically select an appropriate output format for custom aggregation
 		// aggr_fmt is compiled by ParseAggregateMask
 		if ( aggr_fmt ) {
 			int len = strlen(AggrPrependFmt) + strlen(aggr_fmt) + strlen(AggrAppendFmt) + 7;	// +7 for 'fmt:', 2 spaces and '\0'
-			print_mode = malloc(len);
-			if ( !print_mode ) {
+			print_format = malloc(len);
+			if ( !print_format ) {
 				LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 				exit(255);
 			}
-			snprintf(print_mode, len, "fmt:%s %s %s",AggrPrependFmt, aggr_fmt, AggrAppendFmt );
-			print_mode[len-1] = '\0';
+			snprintf(print_format, len, "fmt:%s %s %s",AggrPrependFmt, aggr_fmt, AggrAppendFmt );
+			print_format[len-1] = '\0';
 		} else if ( bidir ) {
-			print_mode = "biline";
+			print_format = "biline";
 		} else
-			print_mode = DefaultMode;
+			print_format = DefaultMode;
 	}
 
-	if ( strncasecmp(print_mode, "fmt:", 4) == 0 ) {
+	if ( strncasecmp(print_format, "fmt:", 4) == 0 ) {
 		// special user defined output format
-		char *format = &print_mode[4];
+		char *format = &print_format[4];
 		if ( strlen(format) ) {
-			if ( !ParseOutputFormat(format, plain_numbers) )
+			if ( !ParseOutputFormat(format, plain_numbers, printmap) )
 				exit(255);
 			print_record  = format_special;
 			record_header = get_record_header();
@@ -970,20 +1015,20 @@ char 		Ident[IDENTLEN];
 		// predefined output format
 
 		// Check for long_v6 mode
-		i = strlen(print_mode);
+		i = strlen(print_format);
 		if ( i > 2 ) {
-			if ( print_mode[i-1] == '6' ) {
+			if ( print_format[i-1] == '6' ) {
 				Setv6Mode(1);
-				print_mode[i-1] = '\0';
+				print_format[i-1] = '\0';
 			} else 
 				Setv6Mode(0);
 		}
 
 		i = 0;
 		while ( printmap[i].printmode ) {
-			if ( strncasecmp(print_mode, printmap[i].printmode, MAXMODELEN) == 0 ) {
+			if ( strncasecmp(print_format, printmap[i].printmode, MAXMODELEN) == 0 ) {
 				if ( printmap[i].Format ) {
-					if ( !ParseOutputFormat(printmap[i].Format, plain_numbers) )
+					if ( !ParseOutputFormat(printmap[i].Format, plain_numbers, printmap) )
 						exit(255);
 					// predefined custom format
 					print_record  = printmap[i].func;
@@ -991,10 +1036,10 @@ char 		Ident[IDENTLEN];
 					user_format	  = 1;
 				} else {
 					// To support the pipe output format for element stats - check for pipe, and remember this
-					if ( strncasecmp(print_mode, "pipe", MAXMODELEN) == 0 ) {
+					if ( strncasecmp(print_format, "pipe", MAXMODELEN) == 0 ) {
 						pipe_output = 1;
 					}
-					if ( strncasecmp(print_mode, "csv", MAXMODELEN) == 0 ) {
+					if ( strncasecmp(print_format, "csv", MAXMODELEN) == 0 ) {
 						csv_output = 1;
 						set_record_header();
 						record_header = get_record_header();
@@ -1010,12 +1055,12 @@ char 		Ident[IDENTLEN];
 	}
 
 	if ( !print_record ) {
-		LogError("Unknown output mode '%s'\n", print_mode);
+		LogError("Unknown output mode '%s'\n", print_format);
 		exit(255);
 	}
 
 	// this is the only case, where headers are printed.
-	if ( strncasecmp(print_mode, "raw", 16) == 0 )
+	if ( strncasecmp(print_format, "raw", 16) == 0 )
 		print_header = format_file_block_header;
 	
 	if ( aggregate && (flow_stat || element_stat) ) {
@@ -1068,17 +1113,12 @@ char 		Ident[IDENTLEN];
 	if ( syntax_only )
 		exit(0);
 
-	if ((aggregate || flow_stat)  && ( topN > 1000 || topN == 0) ) {
-		printf("TopN for record statistic: 0 < topN < 1000 only allowed for IP statistics\n");
-		exit(255);
-	}
-
-	if ( date_sorted && flow_stat ) {
+	if ( print_order && flow_stat ) {
 		printf("-s record and -m are mutually exclusive options\n");
 		exit(255);
 	}
 
-	if ((aggregate || flow_stat || date_sorted)  && !Init_FlowTable() )
+	if ((aggregate || flow_stat || print_order)  && !Init_FlowTable() )
 			exit(250);
 
 	if (element_stat && !Init_StatTable(HashBits, NumPrealloc) )
@@ -1105,7 +1145,7 @@ char 		Ident[IDENTLEN];
 	}
 
 	nfprof_start(&profile_data);
-	sum_stat = process_data(wfile, element_stat, aggregate || flow_stat, date_sorted,
+	sum_stat = process_data(wfile, element_stat, aggregate || flow_stat, print_order != NULL,
 						print_header, print_record, t_start, t_end, 
 						limitflows, do_tag, compress, do_xstat);
 	nfprof_end(&profile_data, total_flows);
@@ -1115,7 +1155,7 @@ char 		Ident[IDENTLEN];
 		exit(0);
 	}
 
-	if (aggregate || date_sorted) {
+	if (aggregate || print_order) {
 		if ( wfile ) {
 			nffile_t *nffile = OpenNewFile(wfile, NULL, compress, is_anonymized, NULL);
 			if ( !nffile ) 
@@ -1128,7 +1168,7 @@ char 		Ident[IDENTLEN];
 			}
 			DisposeFile(nffile);
 		} else {
-			PrintFlowTable(print_record, limitflows, date_sorted, do_tag, GuessDir);
+			PrintFlowTable(print_record, limitflows, do_tag, GuessDir);
 		}
 	}
 

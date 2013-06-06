@@ -123,7 +123,7 @@ uint64_t	*block = (uint64_t *)flow_record;
 		DumpList(Engine);
 		printf("Expected: %i, Found: %i\n", expect, ret);
 		printf("Record:\n");
-		for(i=0; i<=31; i++) {
+		for(i=0; i <= (Offset_MR_LAST >> 3); i++) {
 			printf("%3i %.16llx\n", i, (long long)block[i]);
 		}
 		if ( Engine->IdentList ) {
@@ -450,6 +450,7 @@ void *p;
 	ret = check_filter_block("ip in [10.10.10.11]", &flow_record, 1);
 	ret = check_filter_block("ip in [172.32.7.16]", &flow_record, 1);
 	ret = check_filter_block("src ip in [172.32.7.16 172.32.7.17 10.10.10.11 10.10.10.12 ]", &flow_record, 1);
+	ret = check_filter_block("src ip in [172.32.7.16, 172.32.7.17 10.10.10.11,10.10.10.12 ]", &flow_record, 1);
 	ret = check_filter_block("dst ip in [172.32.7.16 172.32.7.17 10.10.10.11 10.10.10.12 ]", &flow_record, 1);
 	ret = check_filter_block("ip in [172.32.7.16 172.32.7.17 10.10.10.11 10.10.10.12 ]", &flow_record, 1);
 	ret = check_filter_block("ip in [172.32.7.17 172.32.7.18 10.10.10.12 10.10.10.13 ]", &flow_record, 0);
@@ -504,6 +505,8 @@ void *p;
 
 	flow_record.srcas = 123;
 	flow_record.dstas = 456;
+	flow_record.bgpNextAdjacentAS = 0x987;
+	flow_record.bgpPrevAdjacentAS = 0x789;
 	ret = check_filter_block("src as 123", &flow_record, 1);
 	ret = check_filter_block("dst as 456", &flow_record, 1);
 	ret = check_filter_block("as 123", &flow_record, 1);
@@ -521,6 +524,12 @@ void *p;
 	ret = check_filter_block("dst as > 45", &flow_record, 1);
 	ret = check_filter_block("dst as < 500", &flow_record, 1);
 
+	ret = check_filter_block("prev as 0x789", &flow_record, 1);
+	ret = check_filter_block("previous as 0x789", &flow_record, 1);
+	ret = check_filter_block("next as 0x987", &flow_record, 1);
+	ret = check_filter_block("prev as 0x788", &flow_record, 0);
+	ret = check_filter_block("next as 0x988", &flow_record, 0);
+	
 	ret = check_filter_block("src as in [ 122 123 124 ]", &flow_record, 1);
 	ret = check_filter_block("dst as in [ 122 124 125 ]", &flow_record, 0);
 	ret = check_filter_block("dst as in [ 455 456 457 ]", &flow_record, 1);
@@ -578,11 +587,15 @@ void *p;
 	flow_record.ip_nexthop.v4 = 0xac200710;
 	ret = check_filter_block("next ip 172.32.7.16", &flow_record, 1);
 	ret = check_filter_block("next ip 172.32.7.15", &flow_record, 0);
+	ret = check_filter_block("next ip in [172.32.7.16 fe80::2110:abcd:1235:ffff]", &flow_record, 1);
+	ret = check_filter_block("next ip in [172.32.7.15 fe80::2110:abcd:1235:ffff]", &flow_record, 0);
 
 	inet_pton(PF_INET6, "fe80::2110:abcd:1235:ffff", flow_record.ip_nexthop.v6);
 	flow_record.ip_nexthop.v6[0] = ntohll(flow_record.ip_nexthop.v6[0]);
 	flow_record.ip_nexthop.v6[1] = ntohll(flow_record.ip_nexthop.v6[1]);
 	ret = check_filter_block("next ip fe80::2110:abcd:1235:ffff", &flow_record, 1);
+	ret = check_filter_block("next ip in [172.32.7.16 fe80::2110:abcd:1235:ffff]", &flow_record, 1);
+	ret = check_filter_block("next ip in [172.32.7.16 fe80::2110:abcd:1235:fffe]", &flow_record, 0);
 	ret = check_filter_block("next ip fe80::2110:abcd:1235:fffe", &flow_record, 0);
 	ret = check_filter_block("next ip fe81::2110:abcd:1235:ffff", &flow_record, 0);
 
@@ -955,6 +968,23 @@ void *p;
 
 		flow_record.mpls_label[i-1] = 0x10;	// init to some value
 	}
+
+	flow_record.client_nw_delay_usec = 11;
+	flow_record.server_nw_delay_usec = 22;
+	flow_record.appl_latency_usec	 = 33;
+
+	ret = check_filter_block("client latency 11", &flow_record, 1);
+	ret = check_filter_block("server latency 22", &flow_record, 1);
+	ret = check_filter_block("app latency 33", &flow_record, 1);
+	ret = check_filter_block("client latency 12", &flow_record, 0);
+	ret = check_filter_block("server latency 23", &flow_record, 0);
+	ret = check_filter_block("app latency 34", &flow_record, 0);
+	ret = check_filter_block("client latency < 11", &flow_record, 0);
+	ret = check_filter_block("client latency > 11", &flow_record, 0);
+
+	flow_record.exporter_sysid = 44;
+	ret = check_filter_block("sysid 44", &flow_record, 1);
+	ret = check_filter_block("sysid 45", &flow_record, 0);
 
 	return 0;
 }

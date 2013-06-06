@@ -121,6 +121,10 @@ srcas      Source AS number
 .br
 dstas      Destination AS number
 .br
+nextas     BGP Next AS
+.br
+prevas     BGP Previous AS
+.br
 inif       SNMP input interface number
 .br
 outif      SNMP output interface number
@@ -162,6 +166,8 @@ mpls8      MPLS label 8
 mpls9      MPLS label 9
 .br
 mpls10     MPLS label 10
+.br
+router     Exporting router IP
 .RE
 .RS 3
 .P
@@ -291,6 +297,8 @@ mpls8     Statistic about MPLS label 8
 mpls9     Statistic about MPLS label 9
 .br
 mpls10    Statistic about MPLS label 10
+.br
+sysid     Internal SysID of exporter
 .RE
 .RS 3
 .P
@@ -375,6 +383,11 @@ Change ident label in file, specified by \-r to \fIident
 .B -v \fIfile
 Verify \fIfile\fR. Print data file version, number of blocks 
 and compression status.
+.TP 3
+.B -E \flfile
+Print exporter/sampler list found in \fIfile\fR. In case of
+a nfcapd collector file, an additional statistics per exporter 
+is printed with number of flows, packets and sequence errors.
 .TP 3
 .B -x \flfile
 Scan and print extension maps located in file \flfile\fR
@@ -486,115 +499,123 @@ A format description \fBformat\fR consists of a single line containing arbitrary
 and format specifier as described below
 .P
 .RS 3
-\fB%ts\fR     Start Time \- first seen
+\fB%<format>\fR Inserts the predefined \fBformat\fR at this position. e.g. \fB%line\fR
 .br
-\fB%te\fR     End Time \- last seen
+\fB%ts\fR       Start Time \- first seen
 .br
-\fB%td\fR     Duration
+\fB%te\fR       End Time \- last seen
 .br
-\fB%pr\fR     Protocol
+\fB%tr\fR       Time the flow was received by the collector
 .br
-\fB%sa\fR     Source Address
+\fB%td\fR       Duration
 .br
-\fB%da\fR     Destination Address
+\fB%pr\fR       Protocol
 .br
-\fB%sap\fR    Source Address:Port
+\fB%sa\fR       Source Address
 .br
-\fB%dap\fR    Destination Address:Port
+\fB%da\fR       Destination Address
 .br
-\fB%sp\fR     Source Port
+\fB%sap\fR      Source Address:Port
 .br
-\fB%dp\fR     Destination Port
+\fB%dap\fR      Destination Address:Port
 .br
-\fB%sn\fR     Source Network, mask applied
+\fB%sp\fR       Source Port
 .br
-\fB%dn\fR     Destination Network, mask applied
+\fB%dp\fR       Destination Port
 .br
-\fB%nh\fR     Next\-hop IP Address
+\fB%sn\fR       Source Network, mask applied
 .br
-\fB%nhb\fR    BGP Next\-hop IP Address
+\fB%dn\fR       Destination Network, mask applied
 .br
-\fB%ra\fR     Router IP Address
+\fB%nh\fR       Next\-hop IP Address
 .br
-\fB%sas\fR    Source AS
+\fB%nhb\fR      BGP Next\-hop IP Address
 .br
-\fB%das\fR    Destination AS
+\fB%ra\fR       Router IP Address
 .br
-\fB%in\fR     Input Interface num
+\fB%sas\fR      Source AS
 .br
-\fB%out\fR    Output Interface num
+\fB%das\fR      Destination AS
 .br
-\fB%pkt\fR    Packets \- default input
+\fB%nas\fR      Next AS
 .br
-\fB%ipkt\fR   Input Packets
+\fB%das\fR      Previous AS
 .br
-\fB%opkt\fR   Output Packets
+\fB%in\fR       Input Interface num
 .br
-\fB%byt\fR    Bytes \- default input
+\fB%out\fR      Output Interface num
 .br
-\fB%ibyt\fR   Input Bytes
+\fB%pkt\fR      Packets \- default input
 .br
-\fB%obyt\fR   Output Bytes
+\fB%ipkt\fR     Input Packets
 .br
-\fB%fl\fR     Flows
+\fB%opkt\fR     Output Packets
 .br
-\fB%flg\fR    TCP Flags
+\fB%byt\fR      Bytes \- default input
 .br
-\fB%tos\fR    Tos \- default src
+\fB%ibyt\fR     Input Bytes
 .br
-\fB%stos\fR   Src Tos
+\fB%obyt\fR     Output Bytes
 .br
-\fB%dtos\fR   Dst Tos
+\fB%fl\fR       Flows
 .br
-\fB%dir\fR    Direction: ingress, egress
+\fB%flg\fR      TCP Flags
 .br
-\fB%smk\fR    Src mask
+\fB%tos\fR      Tos \- default src
 .br
-\fB%dmk\fR    Dst mask
+\fB%stos\fR     Src Tos
 .br
-\fB%fwd\fR    Forwarding Status
+\fB%dtos\fR     Dst Tos
 .br
-\fB%svln\fR   Src vlan label
+\fB%dir\fR      Direction: ingress, egress
 .br
-\fB%dvln\fR   Dst vlan label
+\fB%smk\fR      Src mask
 .br
-\fB%ismc\fR   Input Src Mac Addr
+\fB%dmk\fR      Dst mask
 .br
-\fB%odmc\fR   Output Dst Mac Addr
+\fB%fwd\fR      Forwarding Status
 .br
-\fB%idmc\fR   Input Dst Mac Addr
+\fB%svln\fR     Src vlan label
 .br
-\fB%osmc\fR   Output Src Mac Addr
+\fB%dvln\fR     Dst vlan label
 .br
-\fB%mpls1\fR  MPLS label 1
+\fB%ismc\fR     Input Src Mac Addr
 .br
-\fB%mpls2\fR  MPLS label 2
+\fB%odmc\fR     Output Dst Mac Addr
 .br
-\fB%mpls3\fR  MPLS label 3
+\fB%idmc\fR     Input Dst Mac Addr
 .br
-\fB%mpls4\fR  MPLS label 4
+\fB%osmc\fR     Output Src Mac Addr
 .br
-\fB%mpls5\fR  MPLS label 5
+\fB%mpls1\fR    MPLS label 1
 .br
-\fB%mpls6\fR  MPLS label 6
+\fB%mpls2\fR    MPLS label 2
 .br
-\fB%mpls7\fR  MPLS label 7
+\fB%mpls3\fR    MPLS label 3
 .br
-\fB%mpls8\fR  MPLS label 8
+\fB%mpls4\fR    MPLS label 4
 .br
-\fB%mpls9\fR  MPLS label 9
+\fB%mpls5\fR    MPLS label 5
 .br
-\fB%mpls10\fR MPLS label 10
+\fB%mpls6\fR    MPLS label 6
 .br
-\fB%mpls\fR   MPLS labels 1-10
+\fB%mpls7\fR    MPLS label 7
 .br
-\fB%eng\fR    Engine type/ID
+\fB%mpls8\fR    MPLS label 8
 .br
-\fB%bps\fR   bps \- bits per second
+\fB%mpls9\fR    MPLS label 9
 .br
-\fB%pps\fR   pps \- packets per second
+\fB%mpls10\fR   MPLS label 10
 .br
-\fB%bpp\fR   bps \- Bytes per package
+\fB%mpls\fR     MPLS labels 1-10
+.br
+\fB%eng\fR      Engine type/ID
+.br
+\fB%bps\fR      bps \- bits per second
+.br
+\fB%pps\fR      pps \- packets per second
+.br
+\fB%bpp\fR      bps \- Bytes per package
 .RE
 .PD
 .P
@@ -758,8 +779,12 @@ by using a direction qualifier, such as \fbsrc\fR or \fBdst\fR.
 They can also be used in combination with \fBand\fR and \fBor\fR.
 such as \fBsrc and dst ip ..\fR. Ommiting the \fISourceDestination\fR
 qualifier is equivalent to \fBsrc or dst\fR.
+.TP 4
+.I ASSourceDestination
+Like \fISourceDestination\fR, also includes \fBnext\fR and \fBprev\fR
+for previous and next AS numbers
 .br
-Example: \fBsrc ip 192.168.1.1 and src and dst port 53\fR
+Example: \fBprev as 65301 or next as 65302\fR
 .TP 4
 .I network
 \fI[SourceDestination]\fR \fBnet a.b.c.d m.n.r.s\fR
@@ -804,7 +829,9 @@ with \fI<num>\fR as a valid icmp type/code. This automatically implies
 .br
 \fBengine\-id <num>\fR
 .br
-with \fI<num>\fR as a valid router engine type/id (0..255).
+\fBsysid <num>\fR
+.br
+with \fI<num>\fR as a valid router engine type/id or exporter ID(0..255).
 .RE
 .TP 4 
 .I Interface
@@ -816,14 +843,14 @@ optional selection of \fBin\fR or \fBout\fR. If ommited \fBin or out\fR applies.
 Example: \fBin if 3\fR
 .TP 4
 .I AS numbers
-\fI[SourceDestination]\fR  \fBas [comp] <num>\fR
+\fI[ASSourceDestination]\fR  \fBas [comp] <num>\fR
 .br
 with \fI<num>\fR as any valid as number. 32bit AS numbers are suported. If 
 \fIcomp\fR is omitted, '=' is assumed. \fIcomp\fR is explained more detailed below.
 .br
 
 .br
-\fI[SourceDestination]\fR \fBas in [ <ASlist> ] \fR
+\fI[ASSourceDestination]\fR \fBas in [ <ASlist> ] \fR
 .br
 An AS number can be compared against a know list, where \fB<ASlist>\fR is a 
 space separated list of individual AS numbers.

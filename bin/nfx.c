@@ -99,6 +99,35 @@ extension_descriptor_t extension_descriptor[] = {
 	{ EX_ROUTER_IP_v6,		16,	13, 0,   "IPv6 router IP addr"},
 	{ EX_ROUTER_ID,			4,	14, 0,   "router ID"},
 
+	{ EX_BGPADJ,			8,	15, 0,   "BGP adjacent prev/next AS"},
+
+	// reserved for more v9/IPFIX
+	{ EX_RECEIVED,			8,	16, 0,   "time packet received"},
+	{ EX_RESERVED_1,		0,	0, 0,    NULL},
+	{ EX_RESERVED_2,		0,	0, 0,    NULL},
+	{ EX_RESERVED_3,		0,	0, 0,    NULL},
+	{ EX_RESERVED_4,		0,	0, 0,    NULL},
+	{ EX_RESERVED_5,		0,	0, 0,    NULL},
+	{ EX_RESERVED_6,		0,	0, 0,    NULL},
+	{ EX_RESERVED_7,		0,	0, 0,    NULL},
+	{ EX_RESERVED_8,		0,	0, 0,    NULL},
+	{ EX_RESERVED_9,		0,	0, 0,    NULL},
+	
+	// ASA - Network Security Event Logging
+	{ EX_NSEL_0,		0,	0, 0,    NULL},
+	{ EX_NSEL_1,		0,	0, 0,    NULL},
+	{ EX_NSEL_2,		0,	0, 0,    NULL},
+	{ EX_NSEL_3,		0,	0, 0,    NULL},
+	{ EX_NSEL_4,		0,	0, 0,    NULL},
+
+	// NAT - Network Event Logging
+	{ EX_NSEL_0,		0,	0, 0,    NULL},
+	{ EX_NSEL_1,		0,	0, 0,    NULL},
+	{ EX_NSEL_2,		0,	0, 0,    NULL},
+
+	// nprobe extensions
+	{ EX_LATENCY,			24,	64, 0,   "nprobe latency"},
+
 	// last entry
 	{ 0,	0,	0, 0,	NULL }
 };
@@ -109,11 +138,14 @@ void FixExtensionMap(extension_map_t *map);
 
 void InitExtensionMaps(extension_map_list_t *extension_map_list ) {
 int i;
-	memset((void *)extension_map_list->slot, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
-	memset((void *)extension_map_list->page, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
 
-	extension_map_list->next_free = 0;
-	extension_map_list->max_used  = -1;
+	if ( extension_map_list ) {
+		memset((void *)extension_map_list->slot, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
+		memset((void *)extension_map_list->page, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
+
+		extension_map_list->next_free = 0;
+		extension_map_list->max_used  = -1;
+	}
 
 	Max_num_extensions = 0;
 	i = 1;
@@ -367,12 +399,7 @@ void SetupExtensionDescriptors(char *options) {
 int i, *mask;
 char *p, *q, *s;
 
-	Max_num_extensions = 0;
-	i = 1;
-	while ( extension_descriptor[i++].id ) 
-		Max_num_extensions++;
-
-	mask = (int *)calloc(Max_num_extensions+1, sizeof(int));
+	mask = (int *)calloc(65536, sizeof(int));
 	if ( !mask ) {
 		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		exit(255);
@@ -412,8 +439,9 @@ char *p, *q, *s;
 		}
 
 		if ( strcmp(p, "all") == 0 ) {
-			for (i=4; i<= Max_num_extensions; i++ ) 
-				extension_descriptor[i].enabled = sign == 1 ? : 0;
+			for (i=4; extension_descriptor[i].id; i++ ) 
+				if ( extension_descriptor[i].description ) 
+					extension_descriptor[i].enabled = sign == 1 ? : 0;
 		} else {
 			switch ( *p ) {
 				case '\0':
@@ -421,8 +449,9 @@ char *p, *q, *s;
 					exit(255);
 					break;
 				case '*': 
-					for (i=4; i<= Max_num_extensions; i++ ) 
-						extension_descriptor[i].enabled = sign == 1 ? : 0;
+					for (i=4; extension_descriptor[i].id; i++ ) 
+						if ( extension_descriptor[i].description ) 
+							extension_descriptor[i].enabled = sign == 1 ? : 0;
 					break;
 				default: {
 					int i = strtol(p, NULL, 10);
@@ -430,7 +459,7 @@ char *p, *q, *s;
 						fprintf(stderr, "Extension format error: Unexpected string: %s.\n", p);
 						exit(255);
 					}
-					if ( i > Max_num_extensions ) {
+					if ( i > 65535 ) {
 						fprintf(stderr, "Extension format error: Invalid extension: %i\n", i);
 						exit(255);
 					}
@@ -441,8 +470,12 @@ char *p, *q, *s;
 		}
 		p = q;
 	}
-	for (i=4; i<= Max_num_extensions; i++ ) {
+	for (i=4; extension_descriptor[i].id; i++ ) {
 		int ui = extension_descriptor[i].user_index;
+
+		// Skip reserved extensions
+		if ( !extension_descriptor[i].description ) 
+			continue;
 
 		// mask[ui] == 0 means no input from user -> default behaviour or already overwritten by '*' 
 		if ( mask[ui] < 0 ) {
@@ -562,16 +595,11 @@ int i, extension_size, max_elements;
 
 
 void DumpExMaps(char *filename) {
-int i, done;
+int done;
 nffile_t	*nffile;
 common_record_t *flow_record;
 uint32_t skipped_blocks;
 uint64_t total_bytes;
-
-	Max_num_extensions = 0;
-	i = 1;
-	while ( extension_descriptor[i++].id ) 
-		Max_num_extensions++;
 
 	printf("\nDump all extension maps:\n");
 	printf("========================\n");

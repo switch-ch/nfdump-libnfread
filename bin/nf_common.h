@@ -59,6 +59,11 @@ typedef struct common_flow_header {
   uint16_t  count;
 } common_flow_header_t;
 
+typedef struct printmap_s {
+	char		*printmode;		// name of the output format
+	printer_t	func;			// name of the function, which prints the record
+	char		*Format;		// output format definition
+} printmap_t;
 
 /* prototypes */
 
@@ -84,7 +89,7 @@ void flow_record_to_pipe(void *record, char ** s, int tag);
 
 void flow_record_to_csv(void *record, char ** s, int tag);
 
-int ParseOutputFormat(char *format, int plain_numbers);
+int ParseOutputFormat(char *format, int plain_numbers, printmap_t *printmap);
 
 void format_special(void *record, char ** s, int tag);
 

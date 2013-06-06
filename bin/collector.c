@@ -78,6 +78,26 @@
 uint32_t default_sampling   = 1;
 uint32_t overwrite_sampling = 0;
 
+/* local variables */
+static uint32_t	exporter_sysid = 0;
+
+/* local prototypes */
+static uint32_t AssignExporterID(void);
+
+/* local functions */
+static uint32_t AssignExporterID(void) {
+
+	if ( exporter_sysid >= 255 ) {
+		LogError("Too many exporters (id > 255). Flow records collected but without reference to exporter");
+		return 0;
+	}
+
+	return ++exporter_sysid;
+
+} // End of AssignExporterID
+
+/* global functions */
+
 int AddFlowSource(FlowSource_t **FlowSource, char *ident) {
 FlowSource_t	**source;
 struct 	stat 	fstat;
@@ -97,17 +117,15 @@ int ok;
 
 	*source = (FlowSource_t *)calloc(1, sizeof(FlowSource_t));
 	if ( !*source ) {
-		fprintf(stderr, "malloc() allocation error: %s\n", strerror(errno));
+		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return 0;
 	} 
-	(*source)->next 	  	  = NULL;
-	(*source)->bookkeeper 	  = NULL;
-	(*source)->any_source 	  = 0;
-	(*source)->exporter_data  = NULL;
-	(*source)->sampler  	  = NULL;
-	(*source)->xstat 		  = NULL;
-
-	memset((void *)&((*source)->std_sampling), 0, sizeof(sampler_t));
+	(*source)->next 	  	  	  = NULL;
+	(*source)->bookkeeper 	  	  = NULL;
+	(*source)->any_source 	  	  = 0;
+	(*source)->exporter_data  	  = NULL;
+	(*source)->xstat 		  	  = NULL;
+	(*FlowSource)->exporter_count = 0;
 
 	// separate IP address from ident
 	if ( ( p = strchr(ident, ',')) == NULL  ) {
@@ -206,11 +224,12 @@ char s[MAXPATHLEN];
 		fprintf(stderr, "calloc() allocation error: %s\n", strerror(errno));
 		return 0;
 	} 
-	(*FlowSource)->next 	  = NULL;
-	(*FlowSource)->bookkeeper = NULL;
-	(*FlowSource)->any_source = 1;
+	(*FlowSource)->next 	  	  = NULL;
+	(*FlowSource)->bookkeeper 	  = NULL;
+	(*FlowSource)->any_source 	  = 1;
 	(*FlowSource)->exporter_data  = NULL;
-	(*FlowSource)->xstat 	  = NULL;
+	(*FlowSource)->xstat 	  	  = NULL;
+	(*FlowSource)->exporter_count = 0;
 
 	// fill in ident
 	if ( strlen(ident) >= IDENTLEN ) {
@@ -263,12 +282,12 @@ char s[MAXPATHLEN];
 
 int InitExtensionMapList(FlowSource_t *fs) {
 
-	fs->extension_map_list.maps = (extension_map_t **)calloc(MAP_BLOCKSIZE, sizeof(extension_map_t *));
+	fs->extension_map_list.maps = (extension_map_t **)calloc(BLOCK_SIZE, sizeof(extension_map_t *));
 	if ( !fs->extension_map_list.maps ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return 0;
 	}
-	fs->extension_map_list.max_maps  = MAP_BLOCKSIZE;
+	fs->extension_map_list.max_maps  = BLOCK_SIZE;
 	fs->extension_map_list.next_free = 0;
 
 	return 1;
@@ -276,7 +295,6 @@ int InitExtensionMapList(FlowSource_t *fs) {
 } // End of InitExtensionMapList
 
 int AddExtensionMap(FlowSource_t *fs, extension_map_t *map) {
-pointer_addr_t 		bsize;
 int next_slot = fs->extension_map_list.next_free;
 
 	// is it a new map, we have not yet in the list
@@ -284,13 +302,13 @@ int next_slot = fs->extension_map_list.next_free;
 		if ( next_slot >= fs->extension_map_list.max_maps ) {
 			// extend map list
 			extension_map_t **p = realloc((void *)fs->extension_map_list.maps, 
-				(fs->extension_map_list.max_maps + MAP_BLOCKSIZE ) * sizeof(extension_map_t *));
+				(fs->extension_map_list.max_maps + BLOCK_SIZE ) * sizeof(extension_map_t *));
 			if ( !p ) {
-				syslog(LOG_ERR, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+				LogError("realloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 				return 0;
 			}
 			fs->extension_map_list.maps 	= p;
-			fs->extension_map_list.max_maps += MAP_BLOCKSIZE;
+			fs->extension_map_list.max_maps += BLOCK_SIZE;
 		}
 	
 		fs->extension_map_list.maps[next_slot] = map;
@@ -299,147 +317,147 @@ int next_slot = fs->extension_map_list.next_free;
 		fs->extension_map_list.next_free++;
 	}
 
-	// sanity check for buffer size
-	bsize = (pointer_addr_t)fs->nffile->buff_ptr - (pointer_addr_t)fs->nffile->block_header;
-	// at least space for the map size is required
-	if ( bsize >= (BUFFSIZE - map->size )  ) {
-		syslog(LOG_WARNING,"AddExtensionMap: Outputbuffer full. Flush buffer but have to skip records.");
-		return 0;
-	}
-
-	if ( !CheckBufferSpace(fs->nffile, map->size) ) {
-		// fishy! - should never happen. maybe disk full?
-		syslog(LOG_ERR,"AddExtensionMap: output buffer size error. Abort record processing");
-		return 0;
-	}
-
-	memcpy(fs->nffile->buff_ptr, (void *)map, map->size);
-	fs->nffile->buff_ptr += map->size;
-
-	fs->nffile->block_header->size += map->size;
-	fs->nffile->block_header->NumRecords++;
+	AppendToBuffer(fs->nffile, (void *)map, map->size);
 
 	return 1;
 
 } // End of AddExtensionMap
 
-void FlushExtensionMaps(FlowSource_t *fs) {
+int FlushInfoExporter(FlowSource_t *fs, exporter_info_record_t *exporter) {
+
+	exporter->sysid = AssignExporterID();
+	fs->exporter_count++;
+	AppendToBuffer(fs->nffile, (void *)exporter, exporter->header.size);
+
+#ifdef DEVEL
+	{
+		#define IP_STRING_LEN   40
+		char ipstr[IP_STRING_LEN];
+		printf("Flush Exporter: ");
+		if ( exporter->sa_family == AF_INET ) {
+			uint32_t _ip = htonl(exporter->ip.v4);
+			inet_ntop(AF_INET, &_ip, ipstr, sizeof(ipstr));
+			printf("SysID: %u, IP: %16s, version: %u, ID: %2u\n", exporter->sysid,
+				ipstr, exporter->version, exporter->id);
+		} else if ( exporter->sa_family == AF_INET6 ) {
+			uint64_t _ip[2];
+			_ip[0] = htonll(exporter->ip.v6[0]);
+			_ip[1] = htonll(exporter->ip.v6[1]);
+			inet_ntop(AF_INET6, &_ip, ipstr, sizeof(ipstr));
+			printf("SysID: %u, IP: %40s, version: %u, ID: %2u\n", exporter->sysid,
+				ipstr, exporter->version, exporter->id);
+		} else {
+			strncpy(ipstr, "<unknown>", IP_STRING_LEN);
+			printf("**** Exporter IP version unknown ****\n");
+		}
+	}
+#endif
+
+	return 1;
+
+} // End of FlushInfoExporter
+
+int FlushInfoSampler(FlowSource_t *fs, sampler_info_record_t *sampler) {
+
+	AppendToBuffer(fs->nffile, (void *)sampler, sampler->header.size);
+
+#ifdef DEVEL
+	{
+		printf("Flush Sampler: ");
+		if ( sampler->id < 0 ) {
+			printf("Exporter SysID: %u,	Generic Sampler: mode: %u, interval: %u\n",
+				sampler->exporter_sysid, sampler->mode, sampler->interval);
+		} else {
+			printf("Exporter SysID: %u, Sampler: id: %i, mode: %u, interval: %u\n",
+				sampler->exporter_sysid, sampler->id, sampler->mode, sampler->interval);
+		}
+	}
+#endif
+
+	return 1;
+
+} // End of FlushInfoSampler
+
+void FlushStdRecords(FlowSource_t *fs) {
+generic_exporter_t *e = fs->exporter_data;
 int i;
+
+	while ( e ) {
+		generic_sampler_t *sampler = e->sampler;
+		AppendToBuffer(fs->nffile, (void *)&(e->info), e->info.header.size);
+		while ( sampler ) {
+			AppendToBuffer(fs->nffile, (void *)&(sampler->info), sampler->info.header.size);
+			sampler = sampler->next;
+		}
+		e = e->next;
+	}
 
     for ( i=0; i<fs->extension_map_list.next_free; i++ ) {
         extension_map_t *map = fs->extension_map_list.maps[i];
-
-        if ( !CheckBufferSpace(fs->nffile, map->size) ) {
-            // fishy! - should never happen. maybe disk full?
-            syslog(LOG_ERR,"FlushExtensionMaps: output buffer size error. Abort record processing");
-            return;
-        }
-
-        memcpy(fs->nffile->buff_ptr, (void *)map, map->size);
-
-        fs->nffile->buff_ptr += map->size;
-        fs->nffile->block_header->NumRecords++;
-        fs->nffile->block_header->size += map->size;
+		AppendToBuffer(fs->nffile, (void *)map, map->size);
     }
 
-} // End of FlushExtensionMaps
+} // End of FlushStdRecords
 
-void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length,
-	uint16_t offset_sampler_mode, uint16_t offset_sampler_interval) {
-option_offset_t	**t;
+void FlushExporterStats(FlowSource_t *fs) {
+generic_exporter_t *e = fs->exporter_data;
+exporter_stats_record_t	*exporter_stats;
+uint32_t i, size;
 
-	t = &(fs->option_offset_table);
-	while ( *t ) {
-		if ( (*t)->id == id ) { // table already known to us - update data
-			dbg_printf("Found existing sampling info in template %i\n", id);
-			break;
-		}
-	
-		t = &((*t)->next);
-	}
+	// idle collector ..
+	if ( !fs->exporter_count ) 
+		return;
 
-	if ( *t == NULL ) {	// new table
-		dbg_printf("Allocate new sampling info from template %i\n", id);
-		*t = (option_offset_t *)calloc(1, sizeof(option_offset_t));
-		if ( !*t ) {
-			fprintf(stderr, "malloc() allocation error: %s\n", strerror(errno));
-			return ;
-		} 
-		dbg_printf("Process_v9: New sampler at offsets: ID %i, mode: %i, interval: %i\n", 
-			offset_sampler_id, offset_sampler_mode, offset_sampler_interval);
-	}	// else existing table
-
-	dbg_printf("Insert/Update sampling info from template %i\n", id);
-	SetFlag((*t)->flags, HAS_SAMPLER_DATA);
-	(*t)->id 				= id;
-	(*t)->offset_id			= offset_sampler_id;
-	(*t)->sampler_id_length = sampler_id_length;
-	(*t)->offset_mode		= offset_sampler_mode;
-	(*t)->offset_interval	= offset_sampler_interval;
-	(*t)->offset_std_sampler_interval	= 0;
-	(*t)->offset_std_sampler_algorithm	= 0;
-
-} // End of InsertSamplerOffset
-
-void InsertStdSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_std_sampler_interval, uint16_t offset_std_sampler_algorithm) {
-option_offset_t	**t;
-
-	t = &(fs->option_offset_table);
-	while ( *t ) {
-		if ( (*t)->id == id ) { // table already known to us - update data
-			dbg_printf("Found existing std sampling info in template %i\n", id);
-			break;
-		}
-	
-		t = &((*t)->next);
-	}
-
-	if ( *t == NULL ) {	// new table
-		dbg_printf("Allocate new std sampling info from template %i\n", id);
-		*t = (option_offset_t *)calloc(1, sizeof(option_offset_t));
-		if ( !*t ) {
-			fprintf(stderr, "malloc() allocation error: %s\n", strerror(errno));
-			return ;
-		} 
-		syslog(LOG_ERR, "Process_v9: New std sampler: interval: %i, algorithm: %i", 
-			offset_std_sampler_interval, offset_std_sampler_algorithm);
-	}	// else existing table
-
-	dbg_printf("Insert/Update sampling info from template %i\n", id);
-	SetFlag((*t)->flags, HAS_STD_SAMPLER_DATA);
-	(*t)->id 				= id;
-	(*t)->offset_id			= 0;
-	(*t)->offset_mode		= 0;
-	(*t)->offset_interval	= 0;
-	(*t)->offset_std_sampler_interval	= offset_std_sampler_interval;
-	(*t)->offset_std_sampler_algorithm	= offset_std_sampler_algorithm;
-	
-} // End of InsertStdSamplerOffset
-
-
-void InsertSampler( FlowSource_t *fs, uint8_t sampler_id, sampler_t *sampler) {
-
-	if ( !fs->sampler ) {
-		fs->sampler = (sampler_t **)calloc(256, sizeof(sampler_t *));
-		if ( !fs->sampler ) {
-			syslog(LOG_ERR, "Process_v9: Panic! malloc(): %s line %d: %s", __FILE__, __LINE__, strerror (errno));
-			return;
-		}
+	size = sizeof(exporter_stats_record_t) + (fs->exporter_count -1) * sizeof(struct exporter_stat_s);
+	exporter_stats = ( exporter_stats_record_t *)malloc(size);
+	if ( !exporter_stats ) {
+		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		return;
 	} 
-	
-	if ( !fs->sampler[sampler_id] ) {
-		fs->sampler[sampler_id] = (sampler_t *)malloc(sizeof(sampler_t));
-		if ( !fs->sampler[sampler_id] ) {
-			syslog(LOG_ERR, "Process_v9: Panic! malloc(): %s line %d: %s", __FILE__, __LINE__, strerror (errno));
-			return;
+	exporter_stats->header.type = ExporterStatRecordType;
+	exporter_stats->header.size = size;
+	exporter_stats->stat_count	= fs->exporter_count;
+
+#ifdef DEVEL
+	printf("Flush Exporter Stats: %u exporters, size: %u\n", fs->exporter_count, size);
+#endif
+	i = 0;
+	while ( e ) {
+		// prevent memory corruption - just in case .. should not happen anyway
+		// continue loop for error reporting after while
+		if ( i >= fs->exporter_count ) {
+			i++;
+			e = e->next;
+			continue;
 		}
-		syslog(LOG_INFO, "Add new sampler: ID: %u, mode: %u, interval: %u\n", sampler_id, sampler->mode, sampler->interval);
-		dbg_printf("Add new sampler: ID: %u, mode: %u, interval: %u\n", sampler_id, sampler->mode, sampler->interval);
+		exporter_stats->stat[i].sysid 			 = e->info.sysid;
+		exporter_stats->stat[i].sequence_failure = e->sequence_failure;
+		exporter_stats->stat[i].packets 		 = e->packets;
+		exporter_stats->stat[i].flows 			 = e->flows;
+#ifdef DEVEL
+		printf("Stat: SysID: %u, version: %u, ID: %2u, Packets: %llu, Flows: %llu, Sequence Failures: %u\n", e->info.sysid,
+			e->info.version, e->info.id, e->packets, e->flows, e->sequence_failure);
+
+#endif
+		// reset counters
+		e->sequence_failure = 0;
+		e->packets 			= 0;
+		e->flows 			= 0;
+
+		i++;
+		e = e->next;
 	}
+	AppendToBuffer(fs->nffile, (void *)exporter_stats, size);
+	free(exporter_stats);
 
-	memcpy((void *)(fs->sampler[sampler_id]), (void *)sampler, sizeof(sampler_t));
+	if ( i != fs->exporter_count ) {
+		LogError("ERROR: exporter stats: Expected %u records, but found %u in %s line %d: %s\n", 
+			fs->exporter_count, i, __FILE__, __LINE__, strerror(errno) );
+	}
+ 
+} // End of FlushExporterStats
 
-} // End of InsertSampler
+
 
 int HasOptionTable(FlowSource_t *fs, uint16_t id ) {
 option_offset_t *t;

@@ -193,53 +193,53 @@ typedef struct ipfix_template_elements_e_s {
 
 // IPFIX std element definitios
 // Flowset record types
-#define IPFIX_octetDeltaCount	 1
-#define IPFIX_packetDeltaCount	 2
+#define IPFIX_octetDeltaCount	 			  1
+#define IPFIX_packetDeltaCount	 			  2
 // reserved 3
-#define IPFIX_FLOWS_AGGR		 3
-#define IPFIX_protocolIdentifier 4
-#define IPFIX_ipClassOfService			 5
-#define IPFIX_tcpControlBits			 6
-#define IPFIX_SourceTransportPort		 7
-#define IPFIX_SourceIPv4Address		 8
-#define IPFIX_SourceIPv4PrefixLength			 9
-#define IPFIX_ingressInterface		 10
+#define IPFIX_FLOWS_AGGR		 			  3
+#define IPFIX_protocolIdentifier 			  4
+#define IPFIX_ipClassOfService			 	  5
+#define IPFIX_tcpControlBits			 	  6
+#define IPFIX_SourceTransportPort		 	  7
+#define IPFIX_SourceIPv4Address		 		  8
+#define IPFIX_SourceIPv4PrefixLength		  9
+#define IPFIX_ingressInterface		 		 10
 #define IPFIX_DestinationTransportPort		 11
 #define IPFIX_DestinationIPv4Address		 12
-#define IPFIX_DestinationIPv4PrefixLength			 13
-#define IPFIX_egressInterface		 14
-#define IPFIX_ipNextHopIPv4Address		 15
-#define IPFIX_bgpSourceAsNumber			 16
-#define IPFIX_bgpDestinationAsNumber			 17
-#define IPFIX_bgpNextHopIPv4Address	 18
+#define IPFIX_DestinationIPv4PrefixLength	 13
+#define IPFIX_egressInterface		 		 14
+#define IPFIX_ipNextHopIPv4Address		 	 15
+#define IPFIX_bgpSourceAsNumber			 	 16
+#define IPFIX_bgpDestinationAsNumber		 17
+#define IPFIX_bgpNextHopIPv4Address	 		 18
 
-#define IPFIX_flowEndSysUpTime		 21
-#define IPFIX_flowStartSysUpTime	 22
+#define IPFIX_flowEndSysUpTime		 		 21
+#define IPFIX_flowStartSysUpTime	 		 22
 #define IPFIX_postOctetDeltaCount			 23
 #define IPFIX_postPacketDeltaCount			 24
-#define IPFIX_SourceIPv6Address		 27
+#define IPFIX_SourceIPv6Address		 		 27
 #define IPFIX_DestinationIPv6Address		 28
 #define IPFIX_SourceIPv6PrefixLength		 29
-#define IPFIX_DestinationIPv6PrefixLength		 30
-#define IPFIX_flowLabelIPv6		31
-#define IPFIX_icmpTypeCodeIPv4			 32
+#define IPFIX_DestinationIPv6PrefixLength	 30
+#define IPFIX_flowLabelIPv6					 31
+#define IPFIX_icmpTypeCodeIPv4			 	 32
 // reserved 34, 35
 // reserved 38, 39
 // reserved 48, 49, 50, 51
 
 // #define IPFIX_MIN_TTL			52
 // #define IPFIX_MAX_TTL			53
-// #define IPFIX_IPV4_IDENT		54
+// #define IPFIX_IPV4_IDENT			54
 
 #define IPFIX_postIpClassOfService			 55
 #define IPFIX_SourceMacAddress		 56
 #define IPFIX_postDestinationMacAddress		 57
-#define IPFIX_vlanId			 58
-#define IPFIX_postVlanId			 59
+#define IPFIX_vlanId			 			 58
+#define IPFIX_postVlanId			 		 59
 
-#define IPFIX_flowDirection			 61
-#define IPFIX_ipNextHopIPv6Address		 62 
-#define IPFIX_bgpNextHopIPv6Address	 63 
+#define IPFIX_flowDirection			 		 61
+#define IPFIX_ipNextHopIPv6Address		 	 62 
+#define IPFIX_bgpNextHopIPv6Address	 		 63 
 
 #define IPFIX_mplsTopLabelStackSection		 70
 #define IPFIX_mplsLabelStackSection2		 71
@@ -253,6 +253,8 @@ typedef struct ipfix_template_elements_e_s {
 #define IPFIX_mplsLabelStackSection10		 79
 #define IPFIX_DestinationMacAddress		 	 80
 #define IPFIX_postSourceMacAddress		 	 81
+#define IPFIX_octetTotalCount		 	 	 85
+#define IPFIX_packetTotalCount		 	 	 86
 #define IPFIX_flowStartMilliseconds			152
 #define IPFIX_flowEndMilliseconds			153
 // reserved 89

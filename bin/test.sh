@@ -85,7 +85,8 @@ if [ -f tmp/pidfile ]; then
 	exit
 fi
 
-./nfdump -r tmp/nfcapd.* -q -o raw  > test3.out
+# supress 'received at' as this is always different
+./nfdump -r tmp/nfcapd.* -q -o raw | grep -v 'received at' > test3.out
 # nfdump 1.6.5 always uses 64 bits. therefore we have a predictable diff
 # so diff the diff
 diff test3.out nfdump.test.out > test3.diff || true

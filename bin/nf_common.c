@@ -104,6 +104,8 @@ static void String_FirstSeen(master_record_t *r, char *string);
 
 static void String_LastSeen(master_record_t *r, char *string);
 
+static void String_Received(master_record_t *r, char *string);
+
 static void String_Duration(master_record_t *r, char *string);
 
 static void String_Protocol(master_record_t *r, char *string);
@@ -133,6 +135,10 @@ static void String_DstPort(master_record_t *r, char *string);
 static void String_SrcAS(master_record_t *r, char *string);
 
 static void String_DstAS(master_record_t *r, char *string);
+
+static void String_NextAS(master_record_t *r, char *string);
+
+static void String_PrevAS(master_record_t *r, char *string);
 
 static void String_Input(master_record_t *r, char *string);
 
@@ -200,11 +206,19 @@ static void String_MPLSs(master_record_t *r, char *string);
 
 static void String_Engine(master_record_t *r, char *string);
 
+static void String_ClientLatency(master_record_t *r, char *string);
+
+static void String_ServerLatency(master_record_t *r, char *string);
+
+static void String_AppLatency(master_record_t *r, char *string);
+
 static void String_bps(master_record_t *r, char *string);
 
 static void String_pps(master_record_t *r, char *string);
 
 static void String_bpp(master_record_t *r, char *string);
+
+static void String_ExpSysID(master_record_t *r, char *string);
 
 static struct format_token_list_s {
 	char				*token;				// token
@@ -214,7 +228,9 @@ static struct format_token_list_s {
 } format_token_list[] = {
 	{ "%ts",  0, "Date flow start        ", String_FirstSeen },		// Start Time - first seen
 	{ "%te",  0, "Date flow end          ", String_LastSeen },		// End Time	- last seen
+	{ "%tr",  0, "Date flow received     ", String_Received },		// Received Time
 	{ "%td",  0, " Duration", 				String_Duration },		// Duration
+	{ "%exp", 0, "Exp ID", 				 	String_ExpSysID },		// Exporter SysID
 	{ "%pr",  0, "Proto", 					String_Protocol },		// Protocol
 	{ "%sa",  1, "     Src IP Addr", 		String_SrcAddr },		// Source Address
 	{ "%da",  1, "     Dst IP Addr", 		String_DstAddr },		// Destination Address
@@ -229,6 +245,8 @@ static struct format_token_list_s {
 	{ "%dp",  0, "Dst Pt", 				 	String_DstPort },		// Destination Port
 	{ "%sas", 0, "Src AS",				 	String_SrcAS },			// Source AS
 	{ "%das", 0, "Dst AS",				 	String_DstAS },			// Destination AS
+	{ "%nas", 0, "Next AS",				 	String_NextAS },		// Next AS
+	{ "%pas", 0, "Prev AS",				 	String_PrevAS },		// Previous AS
 	{ "%in",  0, " Input", 				 	String_Input },			// Input Interface num
 	{ "%out", 0, "Output", 				 	String_Output },		// Output Interface num
 	{ "%pkt", 0, " Packets", 			 	String_InPackets },		// Packets - default input - compat
@@ -250,8 +268,8 @@ static struct format_token_list_s {
 	{ "%dvln", 0, "DVlan", 				 	String_DstVlan },		// Dst Vlan
 	{ "%ismc", 0, "  In src MAC Addr", 	 	String_InSrcMac },		// Input Src Mac Addr
 	{ "%odmc", 0, " Out dst MAC Addr", 	 	String_OutDstMac },		// Output Dst Mac Addr
-	{ "%idmc", 0, "  In dst MAC Addr", 	 	String_OutSrcMac },		// Input Dst Mac Addr
-	{ "%osmc", 0, " Out src MAC Addr", 	 	String_InDstMac },		// Output Src Mac Addr
+	{ "%idmc", 0, "  In dst MAC Addr", 	 	String_InDstMac },		// Input Dst Mac Addr
+	{ "%osmc", 0, " Out src MAC Addr", 	 	String_OutSrcMac },		// Output Src Mac Addr
 	{ "%mpls1", 0, " MPLS lbl 1 ", 			String_MPLS_1 },		// MPLS Label 1
 	{ "%mpls2", 0, " MPLS lbl 2 ", 			String_MPLS_2 },		// MPLS Label 2
 	{ "%mpls3", 0, " MPLS lbl 3 ", 			String_MPLS_3 },		// MPLS Label 3
@@ -268,6 +286,12 @@ static struct format_token_list_s {
 	{ "%pps", 0, "     pps", 			 	String_pps },			// pps - packets per second
 	{ "%bpp", 0, "   Bpp", 				 	String_bpp },			// bpp - Bytes per package
 	{ "%eng", 0, " engine", 			 	String_Engine },		// Engine Type/ID
+
+	// nprobe latency
+	{ "%cl", 0, "C Latency", 	 		 	String_ClientLatency },	// client latency
+	{ "%sl", 0, "S latency", 	 		 	String_ServerLatency },	// server latency
+	{ "%al", 0, "A latency", 			 	String_AppLatency },	// app latency
+	
 	{ NULL, 0, NULL, NULL }
 };
 
@@ -548,7 +572,7 @@ data_block_header_t *h = (data_block_header_t *)header;
 } // End of format_file_block_header
 
 void format_file_block_record(void *record, char ** s, int tag) {
-char 		*_s, as[IP_STRING_LEN], ds[IP_STRING_LEN], datestr1[64], datestr2[64], flags_str[16];
+char 		*_s, as[IP_STRING_LEN], ds[IP_STRING_LEN], datestr1[64], datestr2[64], datestr3[64], flags_str[16];
 char		s_snet[IP_STRING_LEN], s_dnet[IP_STRING_LEN];
 int			i, id;
 ssize_t		slen, _slen;
@@ -647,6 +671,7 @@ extension_map_t	*extension_map = r->map_ref;
 	snprintf(_s, slen-1, "\n"
 "Flow Record: \n"
 "  Flags        =              0x%.2x %s\n"
+"  export sysid =             %5u\n"
 "  size         =             %5u\n"
 "  first        =        %10u [%s]\n"
 "  last         =        %10u [%s]\n"
@@ -655,7 +680,7 @@ extension_map_t	*extension_map = r->map_ref;
 "  src addr     =  %16s\n"
 "  dst addr     =  %16s\n"
 , 
-		r->flags, TestFlag(r->flags, FLAG_SAMPLED) ? "Sampled" : "Unsampled", r->size, r->first, 
+		r->flags, TestFlag(r->flags, FLAG_SAMPLED) ? "Sampled" : "Unsampled", r->exporter_sysid, r->size, r->first, 
 		datestr1, r->last, datestr2, r->msec_first, r->msec_last, 
 		as, ds );
 
@@ -718,6 +743,15 @@ extension_map_t	*extension_map = r->map_ref;
 "  src as       =             %5u\n"
 "  dst as       =             %5u\n"
 , r->srcas, r->dstas);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				break;
+			case EX_BGPADJ:
+				snprintf(_s, slen-1,
+"  next as      =             %5u\n"
+"  prev as      =             %5u\n"
+, r->bgpNextAdjacentAS, r->bgpPrevAdjacentAS);
 				_slen = strlen(data_string);
 				_s = data_string + _slen;
 				slen = STRINGSIZE - _slen;
@@ -896,6 +930,23 @@ extension_map_t	*extension_map = r->map_ref;
 				slen = STRINGSIZE - _slen;
 	
 			break;
+			case EX_LATENCY: {
+				double f1, f2, f3;
+				f1 = (double)r->client_nw_delay_usec / 1000.0;
+				f2 = (double)r->server_nw_delay_usec / 1000.0;
+				f3 = (double)r->appl_latency_usec / 1000.0;
+
+				snprintf(_s, slen-1,
+"  cli latency  =         %9.3f ms\n"
+"  srv latency  =         %9.3f ms\n"
+"  app latency  =         %9.3f ms\n"
+, f1, f2, f3);
+
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+
+			} break;
 			case EX_ROUTER_IP_v6:
 				as[0] = 0;
 				r->ip_router.v6[0] = htonll(r->ip_router.v6[0]);
@@ -919,6 +970,18 @@ extension_map_t	*extension_map = r->map_ref;
 "  engine type  =             %5u\n"
 "  engine ID    =             %5u\n"
 , r->engine_type, r->engine_id);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				break;
+			case EX_RECEIVED:
+				when = r->received / 1000LL;
+				ts = localtime(&when);
+				strftime(datestr3, 63, "%Y-%m-%d %H:%M:%S", ts);
+
+				snprintf(_s, slen-1,
+"  received at  =     %13llu [%s.%03llu]\n"
+, (long long unsigned)r->received, datestr3, (long long unsigned)(r->received % 1000L));
 				_slen = strlen(data_string);
 				_s = data_string + _slen;
 				slen = STRINGSIZE - _slen;
@@ -1226,6 +1289,21 @@ master_record_t *r = (master_record_t *)record;
 		}
 	} 
 
+	{
+		double f1, f2, f3;
+		f1 = (double)r->client_nw_delay_usec / 1000.0;
+		f2 = (double)r->server_nw_delay_usec / 1000.0;
+		f3 = (double)r->appl_latency_usec / 1000.0;
+
+				snprintf(_s, slen-1,
+",%9.3f,%9.3f,%9.3f", f1, f2, f3);
+
+		_slen = strlen(data_string);
+		_s = data_string + _slen;
+		slen = STRINGSIZE - _slen;
+	} 
+
+
 	// EX_ROUTER_IP_v4:
 	if ( (r->flags & FLAG_IPV6_EXP ) != 0 ) { // IPv6
 		// EX_NEXT_HOP_v6:
@@ -1255,6 +1333,12 @@ master_record_t *r = (master_record_t *)record;
 
 	// EX_ROUTER_ID
 	snprintf(_s, slen-1, ",%u/%u", r->engine_type, r->engine_id);
+		_slen = strlen(data_string);
+		_s = data_string + _slen;
+		slen = STRINGSIZE - _slen;
+
+	// Exporter SysID
+	snprintf(_s, slen-1, ",%u", r->exporter_sysid);
 		_slen = strlen(data_string);
 		_s = data_string + _slen;
 		slen = STRINGSIZE - _slen;
@@ -1301,7 +1385,7 @@ char *get_record_header(void) {
 
 void set_record_header(void) {
 
-	snprintf(header_string, STRINGSIZE-1, "ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,ra,eng");
+	snprintf(header_string, STRINGSIZE-1, "ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,cl,sl,al,ra,eng,exid");
 	header_string[STRINGSIZE-1] = '\0';
 
 } // End of format_csv_header
@@ -1361,19 +1445,55 @@ static void AddString(char *string) {
 
 } // End of AddString
 
-int ParseOutputFormat(char *format, int plain_numbers) {
+static char* RecursiveReplace(char *format, printmap_t *printmap) {
+int i = 0;
+
+	while ( printmap[i].printmode ) {
+		char *s, *r;
+		// check for printmode string
+		s = strstr(format, printmap[i].printmode);
+		if ( s && printmap[i].Format && s != format ) {
+			int len = strlen(printmap[i].printmode);
+			if ( !isalpha((int)s[len]) ) {
+				s--;
+				if ( s[0] == '%' ) {
+					int newlen = strlen(format) + strlen(printmap[i].Format);
+					r = malloc(newlen);
+					if ( !r ) {
+						LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+						exit(255);
+					}
+					s[0] = '\0';
+					snprintf(r, newlen, "%s%s%s", format, printmap[i].Format, &(s[len+1]) );
+					r[newlen-1] = '\0';
+					free(format);
+					format = r;
+				}
+			}
+		}
+		i++;
+	}
+
+	return format;
+
+} // End of RecursiveReplace
+
+int ParseOutputFormat(char *format, int plain_numbers, printmap_t *printmap) {
 char *c, *s, *h;
 int	i, remaining;
 
 	no_scale = plain_numbers;
 
 	InitFormatParser();
-
-	c = s = strdup(format);
+	
+	s = strdup(format);
 	if ( !s ) {
 		fprintf(stderr, "Memory allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		exit(255);
 	}
+	s = RecursiveReplace(s, printmap);
+	c = s;
+
 	h = header_string;
 	*h = '\0';
 	while ( *c ) {
@@ -1537,6 +1657,20 @@ char 	*s;
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_LastSeen
+
+static void String_Received(master_record_t *r, char *string) {
+time_t 	tt;
+struct tm * ts;
+char 	*s;
+
+	tt = r->received / 1000LL;
+	ts = localtime(&tt);
+	strftime(string, MAX_STRING_LENGTH-1, "%Y-%m-%d %H:%M:%S", ts);
+	s = string + strlen(string);
+	snprintf(s, MAX_STRING_LENGTH-strlen(string)-1,".%03llu", r->received % 1000LL);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_Received
 
 static void String_Duration(master_record_t *r, char *string) {
 
@@ -1857,6 +1991,20 @@ static void String_DstAS(master_record_t *r, char *string) {
 
 } // End of String_DstAS
 
+static void String_NextAS(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1 ," %6u", r->bgpNextAdjacentAS);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_NextAS
+
+static void String_PrevAS(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1 ," %6u", r->bgpPrevAdjacentAS);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_PrevAS
+
 static void String_Input(master_record_t *r, char *string) {
 
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->input);
@@ -2148,6 +2296,32 @@ static void String_Engine(master_record_t *r, char *string) {
 
 } // End of String_Engine
 
+static void String_ClientLatency(master_record_t *r, char *string) {
+double latency;
+
+	latency = (double)r->client_nw_delay_usec / 1000.0;
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%9.3f", latency);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_ClientLatency
+
+static void String_ServerLatency(master_record_t *r, char *string) {
+double latency;
+
+	latency = (double)r->server_nw_delay_usec / 1000.0;
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%9.3f", latency);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_ServerLatency
+
+static void String_AppLatency(master_record_t *r, char *string) {
+double latency;
+
+	latency = (double)r->appl_latency_usec / 1000.0;
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%9.3f", latency);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_AppLatency
 
 static void String_bps(master_record_t *r, char *string) {
 uint64_t	bps;
@@ -2192,4 +2366,13 @@ uint32_t 	Bpp;
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_bpp
+
+static void String_ExpSysID(master_record_t *r, char *string) {
+
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->exporter_sysid);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_ExpSysID
 

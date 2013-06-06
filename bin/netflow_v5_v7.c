@@ -60,6 +60,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "netflow_v5_v7.h"
 
 #ifndef DEVEL
@@ -78,30 +79,32 @@ static extension_info_t v5_extension_info;		// common for all v5 records
 static uint16_t v5_output_record_size, v5_output_record_base_size;
 
 // All required extension to save full v5 records
-static uint16_t v5_full_mapp[] = { EX_IO_SNMP_2, EX_AS_2, EX_MULIPLE, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, EX_ROUTER_ID, 0 };
+static uint16_t v5_full_mapp[] = { EX_IO_SNMP_2, EX_AS_2, EX_MULIPLE, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, EX_ROUTER_ID, EX_RECEIVED, 0 };
 
 // to simplify, assume blocks with 64 bit counters to check for enough buffer space
 // regardless if 32 or 64 bit packet/byte counters
 #define V5_BLOCK_DATA_SIZE (sizeof(ipv4_block_t) - sizeof(uint32_t) + 2 * sizeof(uint64_t))
 
 typedef struct exporter_v5_s {
-	// link chain
+	// identical to generic_exporter_t
 	struct exporter_v5_s *next;
 
-	// exporter identifier
-	uint32_t version;
-	uint16_t engine_tag;
-	ip_addr_t	ip;
-	uint32_t	sa_family;
+	// generic exporter information
+	exporter_info_record_t info;
 
-	uint16_t align;
-	uint16_t sampling_mode;
-	uint16_t sampling_interval;
+	uint64_t	packets;			// number of packets sent by this exporter
+	uint64_t	flows;				// number of flow records sent by this exporter
+	uint32_t	sequence_failure;	// number of sequence failues
+
+	// generic sampler
+	generic_sampler_t		*sampler;
+	// end of generic_exporter_t
 
 	// sequence vars
-	int64_t	last_sequence;
-	int64_t sequence, distance;
-	int64_t last_count;
+	int64_t	 last_sequence;
+	int64_t  sequence, distance;
+	int64_t  last_count;
+
 	int		first;
 
 	// extension map
@@ -182,6 +185,7 @@ uint16_t	map_size;
 
 static inline exporter_v5_t *GetExporter(FlowSource_t *fs, netflow_v5_header_t *header) {
 exporter_v5_t **e = (exporter_v5_t **)&(fs->exporter_data);
+generic_sampler_t *sampler;
 uint16_t	engine_tag = ntohs(header->engine_tag);
 uint16_t	version    = ntohs(header->version);
 #define IP_STRING_LEN   40
@@ -189,8 +193,8 @@ char ipstr[IP_STRING_LEN];
 
 	// search the appropriate exporter engine
 	while ( *e ) {
-		if ( (*e)->version == version && (*e)->engine_tag == engine_tag &&
-			 (*e)->ip.v6[0] == fs->ip.v6[0] && (*e)->ip.v6[1] == fs->ip.v6[1]) 
+		if ( (*e)->info.version == version && (*e)->info.id == engine_tag &&
+			 (*e)->info.ip.v6[0] == fs->ip.v6[0] && (*e)->info.ip.v6[1] == fs->ip.v6[1]) 
 			return *e;
 		e = &((*e)->next);
 	}
@@ -202,20 +206,35 @@ char ipstr[IP_STRING_LEN];
 		return NULL;
 	}
 	memset((void *)(*e), 0, sizeof(exporter_v5_t));
-	(*e)->engine_tag		= engine_tag;
-	(*e)->ip.v6[0]			= fs->ip.v6[0];
-	(*e)->ip.v6[1]			= fs->ip.v6[1];
-	(*e)->sa_family			= fs->sa_family;
-	(*e)->align				= 0;
-	(*e)->sampling_mode		= (0xC000 & ntohs(header->sampling_interval)) >> 14;
-	(*e)->sampling_interval	= 0x3fff & ntohs(header->sampling_interval);
 	(*e)->next	 			= NULL;
-	(*e)->version	 		= version;
+	(*e)->info.header.type  = ExporterInfoRecordType;
+	(*e)->info.header.size  = sizeof(exporter_info_record_t);
+	(*e)->info.version 		= version;
+	(*e)->info.id			= engine_tag;
+	(*e)->info.ip			= fs->ip;
+	(*e)->info.sa_family	= fs->sa_family;
+	(*e)->sequence_failure	= 0;
+	(*e)->packets			= 0;
+	(*e)->flows				= 0;
 	(*e)->first	 			= 1;
 
+	sampler = (generic_sampler_t *)malloc(sizeof(generic_sampler_t));
+	if ( !sampler ) {
+		syslog(LOG_ERR, "Process_v5: malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+		return NULL;
+	}
+	(*e)->sampler = sampler;
+
+	sampler->info.header.type 	= SamplerInfoRecordype;
+	sampler->info.header.size	= sizeof(sampler_info_record_t);
+	sampler->info.id			= -1;
+	sampler->info.mode			= (0xC000 & ntohs(header->sampling_interval)) >> 14;
+	sampler->info.interval		= 0x3fff & ntohs(header->sampling_interval);
+	sampler->next				= NULL;
+
 	// default is global default_sampling ( user defined or unsampled => 1 )
-	if ( (*e)->sampling_interval == 0 )
-		(*e)->sampling_interval = default_sampling;
+	if ( sampler->info.interval == 0 )
+		sampler->info.interval = default_sampling;
 
 	// copy the v5 generic extension map
 	(*e)->extension_map		= (extension_map_t *)malloc(v5_extension_info.map->size);
@@ -235,6 +254,11 @@ char ipstr[IP_STRING_LEN];
 		return NULL;
 	}
 
+	(*e)->info.sysid = 0;
+	FlushInfoExporter(fs, &((*e)->info));
+	sampler->info.exporter_sysid		= (*e)->info.sysid;
+	FlushInfoSampler(fs, &(sampler->info));
+
 	if ( fs->sa_family == AF_INET ) {
 		uint32_t _ip = htonl(fs->ip.v4);
 		inet_ntop(AF_INET, &_ip, ipstr, sizeof(ipstr));
@@ -247,14 +271,16 @@ char ipstr[IP_STRING_LEN];
 		strncpy(ipstr, "<unknown>", IP_STRING_LEN);
 	}
 
-	dbg_printf("New Exporter: v5 Extension ID: %i, IP: %s, Sampling Mode: %i, Sampling Interval: %u\n", 
-		(*e)->extension_map->map_id, ipstr, (*e)->sampling_mode	,(*e)->sampling_interval);
-	syslog(LOG_INFO, "Process_v5: New exporter: engine id %u, type %u, IP: %s, Sampling Mode: %i, Sampling Interval: %u\n", 
-		( engine_tag & 0xFF ),  ( (engine_tag >> 8) & 0xFF ), ipstr, (*e)->sampling_mode	,(*e)->sampling_interval         );
+
+
+	dbg_printf("New Exporter: v5 SysID: %u, Extension ID: %i, IP: %s, Sampling Mode: %i, Sampling Interval: %u\n", 
+		(*e)->info.sysid, (*e)->extension_map->map_id, ipstr, sampler->info.mode	,sampler->info.interval);
+	syslog(LOG_INFO, "Process_v5: New exporter: SysID: %u, engine id %u, type %u, IP: %s, Sampling Mode: %i, Sampling Interval: %u\n", 
+		(*e)->info.sysid, ( engine_tag & 0xFF ),( (engine_tag >> 8) & 0xFF ), ipstr, sampler->info.mode	,sampler->info.interval );
 
 	if ( overwrite_sampling > 0 )  {
-		(*e)->sampling_interval = overwrite_sampling;
-		syslog(LOG_INFO, "Process_v5: Hard overwrite sampling rate: %u\n", (*e)->sampling_interval);
+		sampler->info.interval = overwrite_sampling;
+		syslog(LOG_INFO, "Process_v5: Hard overwrite sampling rate: %u\n", sampler->info.interval);
 	}
 
 	return (*e);
@@ -287,10 +313,11 @@ char		*string;
 			syslog(LOG_ERR,"Process_v5: Exporter NULL: Abort v5/v7 record processing");
 			return;
 		}
+		exporter->packets++;
 
 		// calculate record size depending on counter size
 		// sigh .. one day I should fix switch to 64bits
-		if ( exporter->sampling_interval == 1 ) {
+		if ( exporter->sampler->info.interval == 1 ) {
 			flags = 0;
 			v5_output_record_size = v5_output_record_base_size + 8; // 2 x  4 byte counters
 		} else {
@@ -358,6 +385,7 @@ char		*string;
 				if (exporter->distance != exporter->last_count) {
 #define delta(a,b) ( (a)>(b) ? (a)-(b) : (b)-(a) )
 					fs->nffile->stat_record->sequence_failure++;
+					exporter->sequence_failure++;
 					/*
 					syslog(LOG_ERR,"Flow v%d sequence last:%llu now:%llu mismatch. Missing: dist:%lu flows",
 						version, exporter->last_sequence, exporter->sequence, exporter->distance);
@@ -386,25 +414,25 @@ char		*string;
 				uint8_t *s1, *s2;
 				int j, id;
 				// header data
-	  			common_record->flags		= flags;
-	  			common_record->type			= CommonRecordType;
-	  			common_record->exporter_ref	= 0;
-	  			common_record->ext_map		= extension_map->map_id;
-	  			common_record->size			= v5_output_record_size;
+	  			common_record->flags		  = flags;
+	  			common_record->type			  = CommonRecordType;
+	  			common_record->exporter_sysid = exporter->info.sysid;;
+	  			common_record->ext_map		  = extension_map->map_id;
+	  			common_record->size			  = v5_output_record_size;
 
 				// v5 common fields
-	  			common_record->srcport		= ntohs(v5_record->srcport);
-	  			common_record->dstport		= ntohs(v5_record->dstport);
-	  			common_record->tcp_flags	= v5_record->tcp_flags;
-	  			common_record->prot			= v5_record->prot;
-	  			common_record->tos			= v5_record->tos;
-	  			common_record->fwd_status 	= 0;
+	  			common_record->srcport		  = ntohs(v5_record->srcport);
+	  			common_record->dstport		  = ntohs(v5_record->dstport);
+	  			common_record->tcp_flags	  = v5_record->tcp_flags;
+	  			common_record->prot			  = v5_record->prot;
+	  			common_record->tos			  = v5_record->tos;
+	  			common_record->fwd_status 	  = 0;
 
 				// v5 typed data as fixed struct v5_block
 	  			ipv4_block->srcaddr	= ntohl(v5_record->srcaddr);
 	  			ipv4_block->dstaddr	= ntohl(v5_record->dstaddr);
 
-				if ( exporter->sampling_interval == 1 ) {
+				if ( exporter->sampler->info.interval == 1 ) {
 					value32_t   *v = (value32_t *)ipv4_block->data;
 
 	  				packets  	= (uint64_t)ntohl(v5_record->dPkts);
@@ -419,8 +447,8 @@ char		*string;
 					value64_t   *v = (value64_t *)ipv4_block->data;
 					uint32_t    *ptr = (uint32_t *)&packets;
 
-	  				packets  	= (uint64_t)ntohl(v5_record->dPkts)   * (uint64_t)exporter->sampling_interval;
-	  				bytes		= (uint64_t)ntohl(v5_record->dOctets) * (uint64_t)exporter->sampling_interval;
+	  				packets  	= (uint64_t)ntohl(v5_record->dPkts)   * (uint64_t)exporter->sampler->info.interval;
+	  				bytes		= (uint64_t)ntohl(v5_record->dOctets) * (uint64_t)exporter->sampler->info.interval;
 
 					// pack packets in 32bit chunks
 					v->val.val32[0] = ptr[0];
@@ -477,6 +505,12 @@ char		*string;
 							tpl->engine_id    = (engine_tag & 0xFF);
 							data_ptr = (void *)tpl->data;
 							} break;
+						case EX_RECEIVED: {
+							tpl_ext_27_t *tpl = (tpl_ext_27_t *)data_ptr;
+							tpl->received  = (uint64_t)((uint64_t)fs->received.tv_sec * 1000LL) + (uint64_t)((uint64_t)fs->received.tv_usec / 1000LL);
+							data_ptr = (void *)tpl->data;
+							} break;
+
 						default:
 							// this should never happen, as v5 has no other extensions
 							syslog(LOG_ERR,"Process_v5: Unexpected extension %i for v5 record. Skip extension", id);
@@ -514,7 +548,9 @@ char		*string;
 				end_time = (uint64_t)Last + boot_time;
 
 				// if overflow happened after flow ended but before got exported
-				if ( Last > v5_header->SysUptime ) {
+				// the additional check > 100000 is required due to a CISCO IOS bug
+				// CSCei12353 - thanks to Bojan
+				if ( Last > v5_header->SysUptime && (( Last - v5_header->SysUptime) > 100000)) {
 					start_time  -= 0x100000000LL;
 					end_time    -= 0x100000000LL;
 				}
@@ -562,6 +598,7 @@ char		*string;
 						fs->nffile->stat_record->numpackets_other += packets;
 						fs->nffile->stat_record->numbytes_other   += bytes;
 				}
+				exporter->flows++;
 				fs->nffile->stat_record->numflows++;
 				fs->nffile->stat_record->numpackets	+= packets;
 				fs->nffile->stat_record->numbytes	+= bytes;
@@ -592,7 +629,7 @@ char		*string;
 
 				if ( verbose ) {
 					master_record_t master_record;
-					ExpandRecord_v2((common_record_t *)common_record, &v5_extension_info, &master_record);
+					ExpandRecord_v2((common_record_t *)common_record, &v5_extension_info, &(exporter->info), &master_record);
 				 	format_file_block_record(&master_record, &string, 0);
 					printf("%s\n", string);
 				}
@@ -657,9 +694,10 @@ void Init_v5_v7_output(send_peer_t *peer) {
 	v5_output_header->count 		= 0;
 	output_engine.first				= 1;
 
-	output_engine.sequence		 = 0;
-	output_engine.last_sequence	 = 0;
-	output_engine.last_count 	 = 0;
+	output_engine.sequence		   = 0;
+	output_engine.last_sequence	   = 0;
+	output_engine.last_count 	   = 0;
+	output_engine.sequence_failure = 0;
 	v5_output_record = (netflow_v5_record_t *)((pointer_addr_t)v5_output_header + (pointer_addr_t)sizeof(netflow_v5_header_t));	
 
 } // End of Init_v5_v7_output

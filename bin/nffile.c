@@ -38,6 +38,9 @@
 #include "config.h"
 
 #include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <sys/uio.h>
 #include <unistd.h>
 #include <string.h>
@@ -347,6 +350,7 @@ nffile_t *nffile;
 	}
 	nffile->buff_ptr = NULL;
 	nffile->fd	 	= 0;
+	nffile->catalog = NULL;
 
 	// Init file header
 	nffile->file_header = calloc(1, sizeof(file_header_t));
@@ -365,6 +369,19 @@ nffile_t *nffile;
 		return NULL;
 	}
 
+/*
+	XXX catalogs not yet implemented
+	nffile->catalog = calloc(1, sizeof(catalog_t));
+	if ( !nffile->catalog ) {
+		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		return NULL;
+	}
+	nffile->catalog->NumRecords = 0;
+	nffile->catalog->size 		= sizeof(catalog_t) - sizeof(data_block_header_t);
+	nffile->catalog->id 		= CATALOG_BLOCK;
+	nffile->catalog->pad 		= 0;
+	nffile->catalog->reserved 	= 0;
+*/
 	// init data buffer
 	nffile->block_header = malloc(BUFFSIZE + sizeof(data_block_header_t));
 	if ( !nffile->block_header ) {
@@ -374,7 +391,7 @@ nffile_t *nffile;
 	nffile->block_header->size 		 = 0;
 	nffile->block_header->NumRecords = 0;
 	nffile->block_header->id		 = DATA_BLOCK_TYPE_2;
-	nffile->block_header->pad		 = 0;
+	nffile->block_header->flags		 = 0;
 
 	nffile->buff_ptr = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t));
 	
@@ -419,9 +436,19 @@ int 			flags;
 		}
 	}
 
-	memset((void *)nffile->stat_record, 0, sizeof(stat_record_t));
-	nffile->stat_record->first_seen = 0x7fffffff;
-	nffile->stat_record->msec_first = 999;
+/*
+	XXX catalogs not yet implemented
+	if ( nffile->catalog && nffile->catalog->NumRecords ) {
+		memset((void *)nffile->catalog->entries, 0, nffile->catalog->NumRecords * sizeof(struct catalog_entry_s));
+		nffile->catalog->NumRecords = 0;
+		nffile->catalog->size		= 0;
+	} 
+*/
+	if ( nffile->stat_record ) {
+		memset((void *)nffile->stat_record, 0, sizeof(stat_record_t));
+		nffile->stat_record->first_seen = 0x7fffffff;
+		nffile->stat_record->msec_first = 999;
+	}
 
 	if ( ident ) {
 		strncpy(nffile->file_header->ident, ident, IDENTLEN);
@@ -452,6 +479,15 @@ int 			flags;
 		close(nffile->fd);
 		return NULL;
 	}
+
+/* skip writing catalog in this test version
+	XXX catalogs not yet implemented
+	if ( WriteExtraBlock(nffile, (data_block_header_t *)nffile->catalog) < 0 ) {
+		LogError("write() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		close(nffile->fd);
+		return NULL;
+	}
+*/
 
 	return nffile;
 
@@ -485,7 +521,7 @@ nffile_t		*nffile;
 	nffile->block_header->size 		 = 0;
 	nffile->block_header->NumRecords = 0;
 	nffile->block_header->id		 = DATA_BLOCK_TYPE_2;
-	nffile->block_header->pad		 = 0;
+	nffile->block_header->flags		 = 0;
 	nffile->buff_ptr = (void *)((pointer_addr_t)nffile->block_header + sizeof(data_block_header_t));
 
 	// initialize output  lzo buffer
@@ -620,10 +656,11 @@ void 	*read_ptr, *buff;
 	read_ptr 	 = (void *)((pointer_addr_t)buff + buff_bytes);	
 	do {
 		ret = read(nffile->fd, read_ptr, request_size);
-		if ( ret < 0 ) 
+		if ( ret < 0 ) {
 			// -1: Error - not expected
 			LogError("read() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 			return NF_ERROR;
+		}
 
 		if ( ret == 0 ) {
 			//  0: EOF   - not expected
@@ -719,7 +756,7 @@ unsigned char __LZO_MMODEL *out;
 lzo_uint in_len;
 lzo_uint out_len;
 
-	if ( !TestFlag(nffile->file_header->flags, FLAG_COMPRESSED) ) {
+	if ( !TestFlag(nffile->file_header->flags, FLAG_COMPRESSED) || block_header->id == CATALOG_BLOCK  ) {
 		ret =  write(nffile->fd, (void *)block_header, sizeof(data_block_header_t) + block_header->size);
 		if ( ret > 0 ) {
 			nffile->file_header->NumBlocks++;
@@ -1033,6 +1070,8 @@ int fd, ret;
 
 } // End of GetStatRecord
 
+
+
 #ifdef COMPAT15
 /*
  * v1 -> v2 record conversion:
@@ -1048,7 +1087,7 @@ int fd, ret;
  *												uint16_t	size;
  *
  *  1 uint16_t    size;							uint8_t		flags;		
- * 												uint8_t 	exporter_ref;
+ * 												uint8_t 	exporter_sysid;
  *    uint16_t    exporter_ref; => 0			uint16_t	ext_map;
  *
  *  2 uint16_t    msec_first;					uint16_t	msec_first;
@@ -1092,9 +1131,9 @@ size_t cplen;
 	v2->size = v1->size;
 
 	// index 1
-	v2->flags 		 = tmp1;
-	v2->exporter_ref = 0;
-	v2->ext_map 	 = 0;
+	v2->flags 		   = tmp1;
+	v2->exporter_sysid = 0;
+	v2->ext_map 	   = 0;
 
 	// index 2, 3, 4 already in sync
 

@@ -129,6 +129,8 @@ static struct aggregate_info_s {
 	{ "outsrcmac",	{ 8, OffsetOutSrcMAC, 	MaskMac, 	 ShiftIPv6 },		-1, 0, 	"%osmc"	},
 	{ "srcas",		{ 4, OffsetAS, 			MaskSrcAS, 	 ShiftSrcAS },	 	-1, 0, 	"%sas"	},
 	{ "dstas",		{ 4, OffsetAS, 			MaskDstAS, 	 ShiftDstAS }, 	 	-1, 0, 	"%das"	},
+	{ "nextas",		{ 4, OffsetBGPadj, 		MaskBGPadjNext, 	 ShiftBGPadjNext },	 	-1, 0, 	"%nas"	},
+	{ "prevas",		{ 4, OffsetBGPadj, 		MaskBGPadjPrev, 	 ShiftBGPadjPrev },  	-1, 0, 	"%pas"	},
 	{ "inif",		{ 4, OffsetInOut, 		MaskInput, 	 ShiftInput },	 	-1, 0, 	"%in"	},
 	{ "outif",		{ 4, OffsetInOut, 		MaskOutput,  ShiftOutput },	 	-1, 0,	"%out"	},
 	{ "mpls1",		{ 4, OffsetMPLS12, 		MaskMPLSlabelOdd,  ShiftMPLSlabelOdd },	 	-1, 0, 	"%mpls1"},
@@ -421,8 +423,9 @@ FlowTableRecord_t	*record;
 
 	FlowTable.bucketcache[0] = record;
 	
-	// safe the extension map reference
+	// safe the extension map and exporter reference
 	record->map_ref = flow_record->map_ref;
+	record->exp_ref = flow_record->exp_ref;
 
 	record->counter[INBYTES]	 = flow_record->dOctets;
 	record->counter[INPACKETS] 	 = flow_record->dPkts;
@@ -486,6 +489,7 @@ uint32_t			index_cache;
 		FlowTableRecord->counter[FLOWS]   	 = flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 
 		FlowTableRecord->map_ref  	 		 = flow_record->map_ref;
+		FlowTableRecord->exp_ref  	 		 = flow_record->exp_ref;
 
 		// keymen got part of the cache
 		keymem = NULL;
@@ -538,6 +542,7 @@ uint32_t			index_cache;
 			FlowTableRecord->counter[OUTPACKETS] = flow_record->out_pkts;
 			FlowTableRecord->counter[FLOWS]   	 = flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 			FlowTableRecord->map_ref  	 		 = flow_record->map_ref;
+			FlowTableRecord->exp_ref  	 		 = flow_record->exp_ref;
 
 			keymem = NULL;
 		}
@@ -637,18 +642,22 @@ struct aggregate_info_s *a;
 	fmt_len = 0;
 	i = 0;
 	while ( aggregate_info[i].aggregate_token != NULL ) {
+		if ( aggregate_info[i].active )
+			stack_count++;
 		if ( aggregate_info[i].fmt )
 			fmt_len += ( strlen(aggregate_info[i].fmt) + 1 );
 		i++;
 	}
 	fmt_len++;	// trailing '\0'
 
-	*aggr_fmt = malloc(fmt_len);
+	if ( !*aggr_fmt ) {
+		*aggr_fmt = malloc(fmt_len);
+		(*aggr_fmt)[0] = '\0';
+	}
 	if ( !*aggr_fmt ) {
 		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
 		return 0;
 	}
-	(*aggr_fmt)[0] = '\0';
 
 
 	FlowTable.apply_netbits  = 0;
@@ -712,7 +721,9 @@ struct aggregate_info_s *a;
 		while ( a->aggregate_token && (strcasecmp(p, a->aggregate_token ) != 0) )
 			a++;
 
-		if ( a->aggregate_token != NULL ) {
+		if ( a->active ) {
+			fprintf(stderr, "Skip already given aggregation mask: %s\n", p);
+		} else if ( a->aggregate_token != NULL ) {
 
 			if ( a->fmt != NULL ) {
 				strncat(*aggr_fmt, a->fmt, fmt_len);

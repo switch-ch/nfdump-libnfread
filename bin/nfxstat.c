@@ -78,12 +78,13 @@ size_t	block_size;
 	xs->block_header->NumRecords = 2;	// 2 histogram records are included
 	xs->block_header->size 		 = block_size;
 	xs->block_header->id 		 = Large_BLOCK_Type;
-	xs->block_header->pad 		 = 0;
+	xs->block_header->flags 	 = 0;
 
 	xs->port_histogram = (flow_port_histogram_t *)((pointer_addr_t)xs + sizeof(xstat_t) + sizeof(data_block_header_t));
 	xs->bpp_histogram  = (flow_bpp_histogram_t *)((pointer_addr_t)xs + sizeof(xstat_t) + sizeof(data_block_header_t) + sizeof(flow_port_histogram_t) - 4); // without link pointer data[4]
 
-	SetFlag(nffile->file_header->flags, FLAG_EXTENDED_STATS);
+	// XXX add catalog entry
+	// SetFlag(nffile->file_header->flags, FLAG_EXTENDED_STATS);
 
 	ResetPortHistogram(xs->port_histogram);
 	ResetBppHistogram(xs->bpp_histogram);

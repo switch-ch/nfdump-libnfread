@@ -239,7 +239,16 @@ typedef struct common_header_s {
 
 #define NF9_FORWARDING_STATUS	89
 
+#define NF9_BGP_ADJ_NEXT_AS 	128
+#define NF9_BGP_ADJ_PREV_AS 	129
 
+// nprobe latency extensions
+#define NF9_NPROBE_CLIENT_NW_DELAY_SEC	57554
+#define NF9_NPROBE_CLIENT_NW_DELAY_USEC	57555
+#define NF9_NPROBE_SERVER_NW_DELAY_SEC	57556
+#define NF9_NPROBE_SERVER_NW_DELAY_USEC 57557
+#define NF9_NPROBE_APPL_LATENCY_SEC		57558
+#define NF9_NPROBE_APPL_LATENCY_USEC	57559
 
 /* prototypes */
 int Init_v9(void);

@@ -71,7 +71,11 @@ static uint32_t ChainHosts(uint64_t *hostlist, int num_records, int type);
 
 static uint64_t VerifyMac(char *s);
 
-enum { DIR_UNSPEC = 1, SOURCE, DESTINATION, SOURCE_AND_DESTINATION, SOURCE_OR_DESTINATION, DIR_IN, DIR_OUT, IN_SRC, IN_DST, OUT_SRC, OUT_DST };
+enum { DIR_UNSPEC = 1, 
+	   SOURCE, DESTINATION, SOURCE_AND_DESTINATION, SOURCE_OR_DESTINATION, 
+	   DIR_IN, DIR_OUT, 
+	   IN_SRC, IN_DST, OUT_SRC, OUT_DST, 
+	   ADJ_PREV, ADJ_NEXT };
 
 /* var defs */
 extern int 			lineno;
@@ -96,10 +100,11 @@ char yyerror_buff[256];
 	void			*list;
 }
 
-%token ANY IP IF MAC MPLS TOS DIR FLAGS PROTO MASK HOSTNAME NET PORT FWDSTAT IN OUT SRC DST EQ LT GT
+%token ANY IP IF MAC MPLS TOS DIR FLAGS PROTO MASK HOSTNAME NET PORT FWDSTAT IN OUT SRC DST EQ LT GT PREV NEXT
 %token NUMBER STRING IDENT ALPHA_FLAGS PROTOSTR PORTNUM ICMP_TYPE ICMP_CODE ENGINE_TYPE ENGINE_ID AS PACKETS BYTES FLOWS 
 %token PPS BPS BPP DURATION
-%token IPV4 IPV6 NEXTHOP BGPNEXTHOP ROUTER VLAN
+%token IPV4 IPV6 BGPNEXTHOP ROUTER VLAN
+%token CLIENT SERVER APP LATENCY SYSID
 %token NOT END
 %type <value>	expr NUMBER PORTNUM ICMP_TYPE ICMP_CODE
 %type <s>	STRING IDENT ALPHA_FLAGS PROTOSTR 
@@ -182,20 +187,9 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			case DIR_OUT: 
 				$$.self = NewBlock(OffsetOutPackets, MaskPackets, $4, $3.comp, FUNC_NONE, NULL); 
 				break;
-			case SOURCE:
-			case DESTINATION:
-			case SOURCE_OR_DESTINATION:
-			case SOURCE_AND_DESTINATION:
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
 				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -211,20 +205,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			case DIR_OUT: 
 				$$.self = NewBlock(OffsetOutBytes, MaskBytes, $4, $3.comp, FUNC_NONE, NULL); 
 				break;
-			case SOURCE:
-			case DESTINATION:
-			case SOURCE_OR_DESTINATION:
-			case SOURCE_AND_DESTINATION:
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -276,18 +258,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetDstTos, MaskDstTos, ($4 << ShiftDstTos) & MaskDstTos, $3.comp, FUNC_NONE, NULL)
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-				yyerror("This token is not expected here!");
-				YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 			}
 	}
@@ -363,18 +335,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					uint32_t dst = ChainHosts(IPstack, num_ip, DESTINATION);
 					$$.self = Connect_AND(src, dst);
 					} break;
-				case DIR_IN: 
-				case DIR_OUT: 
-				case IN_SRC: 
-				case IN_DST: 
-				case OUT_SRC: 
-				case OUT_DST:
-						yyerror("This token is not expected here!");
-						YYABORT;
-					break;
 				default:
-					/* should never happen */
-					yyerror("Internal parser error");
+					yyerror("This token is not expected here!");
 					YYABORT;
 	
 			} // End of switch
@@ -406,23 +368,13 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetDstIPv6a, MaskIPv6, 0 , CMP_IPLIST, FUNC_NONE, (void *)$5 )
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		}
 	}
 
-	| NEXTHOP IP STRING { 	
+	| NEXT IP STRING { 	
 		int af, bytes, ret;
 
 		ret = parse_ip(&af, $3, IPstack, &bytes, STRICT_IP, &num_ip);
@@ -447,6 +399,12 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			NewBlock(OffsetNexthopv6b, MaskIPv6, IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
 			NewBlock(OffsetNexthopv6a, MaskIPv6, IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
 		);
+	}
+
+	| NEXT IP IN '[' iplist ']' { 	
+
+		$$.self = NewBlock(OffsetNexthopv6a, MaskIPv6, 0 , CMP_IPLIST, FUNC_NONE, (void *)$5 );
+
 	}
 
 	| BGPNEXTHOP IP STRING { 	
@@ -503,6 +461,26 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 		);
 	}
 
+	| CLIENT LATENCY comp NUMBER { 	
+		$$.self = NewBlock(OffsetClientLatency, MaskLatency, $4, $3.comp, FUNC_NONE, NULL); 
+	}
+
+	| SERVER LATENCY comp NUMBER { 	
+		$$.self = NewBlock(OffsetServerLatency, MaskLatency, $4, $3.comp, FUNC_NONE, NULL); 
+	}
+
+	| APP LATENCY comp NUMBER { 	
+		$$.self = NewBlock(OffsetAppLatency, MaskLatency, $4, $3.comp, FUNC_NONE, NULL); 
+	}
+
+	| SYSID NUMBER { 	
+		if ( $2 > 255 ) {
+			yyerror("Router SysID expected between be 1..255");
+			YYABORT;
+		}
+		$$.self = NewBlock(OffsetExporterSysID, MaskExporterSysID, ($2 << ShiftExporterSysID) & MaskExporterSysID, CMP_EQ, FUNC_NONE, NULL); 
+	}
+
 	| dqual PORT comp NUMBER {	
 		$$.direction = $1.direction;
 		if ( $4 > 65535 ) {
@@ -530,18 +508,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetPort, MaskDstPort, ($4 << ShiftDstPort) & MaskDstPort, $3.comp, FUNC_NONE, NULL )
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End switch
 
@@ -605,18 +573,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetPort, MaskDstPort, 0, CMP_ULLIST, FUNC_NONE, (void *)root )
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -699,18 +657,14 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetAS, MaskDstAS, ($4 << ShiftDstAS) & MaskDstAS, $3.comp, FUNC_NONE, NULL)
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
+			case ADJ_PREV:
+				$$.self = NewBlock(OffsetBGPadj, MaskBGPadjPrev, ($4 << ShiftBGPadjPrev) & MaskBGPadjPrev, $3.comp, FUNC_NONE, NULL );
+				break;
+			case ADJ_NEXT:
+				$$.self = NewBlock(OffsetBGPadj, MaskBGPadjNext, ($4 << ShiftBGPadjNext) & MaskBGPadjNext, $3.comp, FUNC_NONE, NULL );
 				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -774,18 +728,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetAS, MaskDstAS, 0, CMP_ULLIST, FUNC_NONE, (void *)root )
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		}
 
@@ -818,18 +762,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetMask, MaskDstMask, ($3 << ShiftDstMask) & MaskDstMask, CMP_EQ, FUNC_NONE, NULL )
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End switch
 
@@ -919,18 +853,9 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					)
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
 				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -1015,18 +940,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					)
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -1051,20 +966,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			case DIR_OUT: 
 				$$.self = NewBlock(OffsetInOut, MaskOutput, ($3 << ShiftOutput) & MaskOutput, CMP_EQ, FUNC_NONE, NULL); 
 				break;
-			case SOURCE:
-			case DESTINATION:
-			case SOURCE_OR_DESTINATION:
-			case SOURCE_AND_DESTINATION:
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -1097,18 +1000,8 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 					NewBlock(OffsetVlan, MaskDstVlan, ($3 << ShiftDstVlan) & MaskDstVlan, CMP_EQ, FUNC_NONE, NULL)
 				);
 				break;
-			case DIR_IN: 
-			case DIR_OUT: 
-			case IN_SRC: 
-			case IN_DST: 
-			case OUT_SRC: 
-			case OUT_DST:
-					yyerror("This token is not expected here!");
-					YYABORT;
-				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 
@@ -1169,14 +1062,9 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			case OUT_DST:
 					$$.self = NewBlock(OffsetOutDstMAC, MaskMac, mac, CMP_EQ, FUNC_NONE, NULL );
 					break;
-			case SOURCE_OR_DESTINATION:
-			case SOURCE_AND_DESTINATION:
-					yyerror("This token is not expected here!");
-					YYABORT;
 				break;
 			default:
-				/* should never happen */
-				yyerror("Internal parser error");
+				yyerror("This token is not expected here!");
 				YYABORT;
 		} // End of switch
 	}
@@ -1522,6 +1410,37 @@ iplist:	STRING '/' NUMBER	{
 			}
 		}
 	}
+	| iplist ',' STRING { 
+		int i, af, bytes, ret;
+		struct IPListNode *node;
+
+		ret = parse_ip(&af, $3, IPstack, &bytes, ALLOW_LOOKUP, &num_ip);
+
+		if ( ret == 0 ) {
+			yyerror("Invalid IP address");
+			YYABORT;
+		}
+		if ( af && (( af == PF_INET && bytes != 4 ) || ( af == PF_INET6 && bytes != 16 ))) {
+			yyerror("incomplete IP address");
+			YYABORT;
+		}
+
+		// ret == - 2 means lookup failure
+		if ( ret != -2 ) {
+			for ( i=0; i<num_ip; i++ ) {
+				if ((node = malloc(sizeof(struct IPListNode))) == NULL) {
+					yyerror("malloc() error");
+					YYABORT;
+				}
+				node->ip[0] = IPstack[2*i];
+				node->ip[1] = IPstack[2*i+1];
+				node->mask[0] = 0xffffffffffffffffLL;
+				node->mask[1] = 0xffffffffffffffffLL;
+	
+				RB_INSERT(IPtree, (IPlist_t *)$$, node);
+			}
+		}
+	}
 
 	| iplist STRING '/' NUMBER  { 
 		int af, bytes, ret;
@@ -1587,6 +1506,7 @@ ullist:	NUMBER	{
 		RB_INSERT(ULongtree, root, node);
 		$$ = (void *)root;
 	}
+
 	| ullist NUMBER { 
 		struct ULongListNode *node;
 
@@ -1597,6 +1517,18 @@ ullist:	NUMBER	{
 		node->value = $2;
 		RB_INSERT(ULongtree, (ULongtree_t *)$$, node);
 	}
+
+	| ullist ',' NUMBER { 
+		struct ULongListNode *node;
+
+		if ((node = malloc(sizeof(struct ULongListNode))) == NULL) {
+			yyerror("malloc() error");
+			YYABORT;
+		}
+		node->value = $3;
+		RB_INSERT(ULongtree, (ULongtree_t *)$$, node);
+	}
+
 	;
 
 /* scaling  qualifiers */
@@ -1622,6 +1554,8 @@ dqual:	  			{ $$.direction = DIR_UNSPEC;  			 }
 	| IN DST		{ $$.direction = IN_DST;				 }
 	| OUT SRC		{ $$.direction = OUT_SRC;				 }
 	| OUT DST		{ $$.direction = OUT_DST;				 }
+	| PREV			{ $$.direction = ADJ_PREV;				 }
+	| NEXT			{ $$.direction = ADJ_NEXT;				 }
 	;
 
 expr:	term		{ $$ = $1.self;        }

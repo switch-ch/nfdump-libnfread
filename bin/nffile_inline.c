@@ -46,7 +46,7 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required);
 
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required);
 
-static inline void ExpandRecord_v2(common_record_t *input_record, extension_info_t *extension_info, master_record_t *output_record );
+static inline void ExpandRecord_v2(common_record_t *input_record, extension_info_t *extension_info, exporter_info_record_t *exporter_info, master_record_t *output_record );
 
 static void PackRecord(master_record_t *master_record, nffile_t *nffile);
 
@@ -79,7 +79,7 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
  * LP64 CPUs need special 32bit operations as it is not guarateed, that 64bit
  * values are aligned 
  */
-static inline void ExpandRecord_v2(common_record_t *input_record, extension_info_t *extension_info, master_record_t *output_record ) {
+static inline void ExpandRecord_v2(common_record_t *input_record, extension_info_t *extension_info, exporter_info_record_t *exporter_info, master_record_t *output_record ) {
 extension_map_t *extension_map = extension_info->map;
 uint32_t	i, *u;
 size_t		size;
@@ -87,11 +87,20 @@ void		*p = (void *)input_record;
 
 	// set map ref
 	output_record->map_ref = extension_map;
-	
+
 	// Copy common data block
 	size = COMMON_RECORD_DATA_SIZE;
 	memcpy((void *)output_record, p, size);
 	p = (void *)input_record->data;
+
+	if ( exporter_info ) {
+		uint32_t sysid = exporter_info->sysid;
+		output_record->exporter_sysid = sysid;
+		input_record->exporter_sysid  = sysid;
+		output_record->exp_ref 		  = exporter_info;
+	} else {
+		output_record->exp_ref 		  = NULL;
+	}
 
 	// Required extension 1 - IP addresses
 	if ( (input_record->flags & FLAG_IPV6_ADDR) != 0 )	{ // IPv6
@@ -304,6 +313,26 @@ void		*p = (void *)input_record;
 				output_record->engine_id   = tpl->engine_id;
 				p = (void *)tpl->data;
 				} break;
+			case EX_BGPADJ: {
+				tpl_ext_26_t *tpl = (tpl_ext_26_t *)p;
+				output_record->bgpNextAdjacentAS = tpl->bgpNextAdjacentAS;
+				output_record->bgpPrevAdjacentAS = tpl->bgpPrevAdjacentAS;
+				p = (void *)tpl->data;
+			} break;
+			case EX_LATENCY: {
+				tpl_ext_latency_t *tpl = (tpl_ext_latency_t *)p;
+				output_record->client_nw_delay_usec = tpl->client_nw_delay_usec;
+				output_record->server_nw_delay_usec = tpl->server_nw_delay_usec;
+				output_record->appl_latency_usec = tpl->appl_latency_usec;
+				p = (void *)tpl->data;
+			} break;
+			case EX_RECEIVED: {
+				tpl_ext_27_t *tpl = (tpl_ext_27_t *)p;
+				output_record->received = tpl->received;
+				p = (void *)tpl->data;
+			} break;
+
+			break;
 		}
 	}
 	
@@ -540,6 +569,17 @@ int		i;
 				tpl_ext_25_t *tpl = (tpl_ext_25_t *)p;
 				tpl->engine_type = master_record->engine_type;
 				tpl->engine_id   = master_record->engine_id;
+				p = (void *)tpl->data;
+				} break;
+			case EX_BGPADJ: {
+				tpl_ext_26_t *tpl = (tpl_ext_26_t *)p;
+				tpl->bgpNextAdjacentAS = master_record->bgpNextAdjacentAS;
+				tpl->bgpPrevAdjacentAS = master_record->bgpPrevAdjacentAS;
+				p = (void *)tpl->data;
+				} break;
+			case EX_RECEIVED: {
+				tpl_ext_27_t *tpl = (tpl_ext_27_t *)p;
+				tpl->received = master_record->received;
 				p = (void *)tpl->data;
 				} break;
 

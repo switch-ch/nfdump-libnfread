@@ -56,6 +56,8 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <time.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <pwd.h>
 #include <grp.h>
@@ -65,7 +67,6 @@
 #include <sys/param.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <time.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <syslog.h>
@@ -91,6 +92,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "netflow_v1.h"
 #include "netflow_v5_v7.h"
 #include "netflow_v9.h"
@@ -427,10 +429,10 @@ srecord_t	*commbuff;
 	 * for proper cleanup 
 	 */
 	while ( 1 ) {
+		struct timeval tv;
 
 		/* read next bunch of data into beginn of input buffer */
 		if ( !done) {
-
 #ifdef PCAP
 			// Debug code to read from pcap file, or from socket 
 			cnt = receive_packet(socket, in_buff, NETWORK_INPUT_BUFF_SIZE , 0, 
@@ -459,7 +461,10 @@ srecord_t	*commbuff;
 		}
 
 		/* Periodic file renaming, if time limit reached or if we are done.  */
-		t_now = time(NULL);
+		// t_now = time(NULL);
+		gettimeofday(&tv, NULL);
+		t_now = tv.tv_sec;
+
 		if ( ((t_now - t_start) >= twin) || done ) {
 			char subfilename[64];
 			struct  tm *now;
@@ -534,6 +539,8 @@ srecord_t	*commbuff;
 					ResetBppHistogram(fs->xstat->bpp_histogram);
 				}
 
+				// Flush Exporter Stat to file
+				FlushExporterStats(fs);
 				// Close file
 				CloseUpdateFile(nffile, fs->Ident);
 
@@ -582,12 +589,12 @@ srecord_t	*commbuff;
 					}
 					/* XXX needs fixing */
 					if ( fs->xstat ) {
-						SetFlag(nffile->file_header->flags, FLAG_EXTENDED_STATS);
+						// to be implemented
 					}
 				}
 
-				// Dump all extension maps to the buffer
-				FlushExtensionMaps(fs);
+				// Dump all extension maps and exporters to the buffer
+				FlushStdRecords(fs);
 
 				// next flow source
 				fs = fs->next;
@@ -670,6 +677,7 @@ srecord_t	*commbuff;
 			continue;
 		}
 
+		fs->received = tv;
 		/* Process data - have a look at the common header */
 		version = ntohs(nf_header->version);
 		switch (version) {
@@ -967,6 +975,7 @@ int		c;
 		exit(255);
 	}
 
+	InitExtensionMaps(NULL);
 	SetupExtensionDescriptors(strdup(extension_tags));
 
 	// Debug code to read from pcap file

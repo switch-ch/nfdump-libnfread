@@ -94,9 +94,10 @@ typedef struct file_header_s {
 
 	uint32_t	flags;				
 #define NUM_FLAGS		3
-#define FLAG_COMPRESSED 	0x1
-#define FLAG_ANONYMIZED 	0x2
-#define FLAG_EXTENDED_STATS 0x4
+#define FLAG_COMPRESSED 	0x1		// flow records are compressed
+#define FLAG_ANONYMIZED 	0x2		// flow data are anonimized 
+#define FLAG_CATALOG		0x4		// has a file catalog record after stat record
+
 									/*
 										0x1 File is compressed with LZO1X-1 compression
 									 */
@@ -104,7 +105,7 @@ typedef struct file_header_s {
 	char		ident[IDENTLEN];	// string identifier for this file
 } file_header_t;
 
-/* FLAG_EXTENDED_STATS bit = 0 
+/* 
  * Compatible with nfdump x.x.x file format: After the file header an 
  * inplicit stat record follows, which contains the statistics 
  * information about all netflow records in this file.
@@ -139,10 +140,6 @@ typedef struct stat_record_s {
 	uint32_t	sequence_failure;
 } stat_record_t;
 
-/* FLAG_EXTENDED_STATS bit = 1 
- * not yet implemented
- */
-
 typedef struct stat_header_s {
 	uint16_t	type;		// stat record type
 // compatible stat type nfdump 1.5.x in new extended stat record type
@@ -166,11 +163,15 @@ typedef struct data_block_header_s {
 	uint32_t	NumRecords;		// number of data records in data block
 	uint32_t	size;			// size of this block in bytes without this header
 	uint16_t	id;				// Block ID == DATA_BLOCK_TYPE_2
-	uint16_t	pad;			// unused align 32 bit
+	uint16_t	flags;			// 0 - kompatibility
+								// 1 - block uncompressed
+								// 2 - block compressed
 } data_block_header_t;
 
-// compat nfdump 1.5.x v1 type
+// compat nfdump 1.5.x data block type
 #define DATA_BLOCK_TYPE_1		1
+
+// nfdump 1.6.x data block type
 #define DATA_BLOCK_TYPE_2		2
 
 /*
@@ -190,6 +191,36 @@ typedef struct L_record_header_s {
  	uint32_t	size;
 } L_record_header_t;
 
+/*
+ *
+ * Catalog Block
+ * =============
+ * introduces a file catalog for nfdump files. Not yet really used in nfdump-1.6.x
+ * The catalog will get implemented later - most likely 1.7
+ * The flag FLAG_CATALOG is used to flag the file for having a catalog
+ * 
+ */
+
+#define CATALOG_BLOCK	4
+
+typedef struct catalog_s {
+	uint32_t	NumRecords;		// set to the number of catalog entries
+	uint32_t	size;			// sizeof(nffile_catalog_t) without this header (-12)
+	uint16_t	id;				// Block ID == CATALOG_BLOCK
+	uint16_t	pad;			// unused align 32 bit
+
+	off_t		reserved;		// reserved, set to 0;
+
+	// catalog data
+	struct catalog_entry_s {
+		uint32_t	type;		// what catalog type does the entry point to
+// type = 0 reserved
+#define EXPORTER_table	1
+#define MAX_CATALOG_ENTRIES 16
+		off_t		offset;			// point to a data block with standard header data_block_header_t
+	} entries[MAX_CATALOG_ENTRIES];	// the number of types we currently have defined - may grow in future
+
+} catalog_t;
 
 /*
  * Generic file handle for reading/writing files
@@ -200,6 +231,7 @@ typedef struct nffile_s {
 	data_block_header_t	*block_header;	// buffer
 	void				*buff_ptr;		// pointer into buffer for read/write blocks/records
 	stat_record_t 		*stat_record;	// flow stat record
+	catalog_t			*catalog;		// file catalog
 	int					_compress;		// data compressed flag
 	int					fd;				// file descriptor
 } nffile_t;
@@ -227,6 +259,13 @@ typedef struct nffile_s {
 #define ExtensionMapType	2
 #define PortHistogramType	3
 #define BppHistogramType	4
+// TC code
+#define ExporterRecordType	5
+#define SamplerRecordype	6
+
+#define ExporterInfoRecordType	7
+#define ExporterStatRecordType	8
+#define SamplerInfoRecordype	9
 
  /* 
  * All records are 32bit aligned and layouted in a 64bit array. The numbers placed in () refer to the netflow v9 type id.
@@ -300,7 +339,7 @@ typedef struct common_record_s {
 #define ClearFlag(var, flag) 	(var &= ~flag)
 #define TestFlag(var, flag)		(var & flag)
 
-	uint8_t		exporter_ref;
+	uint8_t		exporter_sysid;
  	uint16_t	ext_map;
 
 	// netflow common record
@@ -625,7 +664,7 @@ typedef struct tpl_ext_13_s {
 /* 
  * Out packet counter size
  * ------------------------
- * 2 byte
+ * 4 byte
  * Extension 14: 
  * +----+--------------+--------------+--------------+--------------+
  * |  0 |                        out pkts (24)                      |
@@ -836,6 +875,78 @@ typedef struct tpl_ext_25_s {
 	uint8_t		data[4];	// points to further data
 } tpl_ext_25_t;
 
+/*
+ * BGP prev/next adjacent AS
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                  bgpNextAdjacentAsNumber(128)             |                bgpPrevAdjacentAsNumber(129)               |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_BGPADJ 26
+typedef struct tpl_ext_26_s {
+	uint32_t	bgpNextAdjacentAS;
+	uint32_t	bgpPrevAdjacentAS;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_26_t;
+
+/*
+ * time flow received in ms
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                                    T received()                                                       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_RECEIVED		27
+typedef struct tpl_ext_27_s {
+	union {
+		uint64_t	received;
+		uint32_t	v[2];
+	};
+	uint8_t		data[4];	// points to further data
+} tpl_ext_27_t;
+
+
+
+#define EX_RESERVED_1	28
+#define EX_RESERVED_2	29
+#define EX_RESERVED_3	30
+#define EX_RESERVED_4	31
+#define EX_RESERVED_5	32
+#define EX_RESERVED_6	33
+#define EX_RESERVED_7	34
+#define EX_RESERVED_8	35
+#define EX_RESERVED_9	36
+
+#define EX_NSEL_0		37
+#define EX_NSEL_1		38
+#define EX_NSEL_2		39
+#define EX_NSEL_3		40
+#define EX_NSEL_4		41
+
+#define EX_NEL_0		42
+#define EX_NEL_1		43
+#define EX_NEL_2		44
+
+/*
+ * nprobe extensions
+ */
+
+/*
+ * latency extension 
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                           client_nw_delay_usec (57554/57554)                                          |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                                           server_nw_delay_usec (57556/57557)                                          |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |                                           appl_latency_usec (57558/57559)                                             |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_LATENCY 45
+typedef struct tpl_ext_latency_s {
+	uint64_t	client_nw_delay_usec;
+	uint64_t	server_nw_delay_usec;
+	uint64_t	appl_latency_usec;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_latency_t;
+
 
 /* 
  * 
@@ -883,6 +994,131 @@ typedef struct extension_map_s {
 // see nfx.c - extension_descriptor
 #define DefaultExtensions  "1,2"
 
+/*
+ * nfcapd writes an info stat record for each new exporter
+ * 
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  - |	     0     |      1       |      2       |      3       |      4       |      5       |      6       |      7       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |       record type == 7      |             size            |                          version                          |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                                                                                                                       |
+ * +----+--------------+--------------+--------------+----------  ip   ------------+--------------+--------------+--------------+
+ * |  2 |                                                                                                                       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  3 |          sa_family          |            sysid            |                             id                            |      
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+typedef struct exporter_info_record_s {
+	record_header_t	header;
+
+	// exporter version
+	uint32_t 	version;
+#define SFLOW_VERSION  9999
+
+	// IP address
+	ip_addr_t	ip;
+	uint16_t	sa_family;
+
+	// internal assigned ID
+	uint16_t	sysid;
+
+	// exporter ID/Domain ID/Observation Domain ID assigned by the device
+	uint32_t	id;
+
+} exporter_info_record_t;
+
+/*
+ * nfcapd writes a stat record at the end of the file which contains the exporter statistics.
+ * 
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  - |	     0     |      1       |      2       |      3       |      4       |      5       |      6       |      7       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |       record type == 8      |             size            |                         stat_count                        |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                           sysid[0]                        |                      sequence_failure[0]                  |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |                                                        packets[0]                                                     |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  3 |                                                         flows[0]                                                      |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * ... more stat records [x], one for each exporter
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+typedef struct exporter_stats_record_s {
+	record_header_t	header;
+
+	uint32_t	stat_count;		// number of stat records 
+	
+	struct exporter_stat_s {
+		uint32_t	sysid;				// identifies the exporter
+		uint32_t	sequence_failure;	// number of sequence failues
+		uint64_t	packets;			// number of packets sent by this exporter
+		uint64_t	flows;				// number of flow records sent by this exporter
+	} stat[1];
+
+} exporter_stats_record_t;
+
+
+/*
+ * nfcapd writes a sampler record for each new sampler announced
+ * 
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  - |	     0     |      1       |      2       |      3       |      4       |      5       |      6       |      7       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |       record type == 9      |             size            |                             id                            |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                          interval                         |             mode            |       exporter_sysid        |
+ * +----+--------------+--------------+--------------+-----------------------------+--------------+--------------+--------------+
+ */
+typedef struct sampler_info_record_s {
+	record_header_t	header;
+
+	// sampler data
+	int32_t		id;				// id assigned by the exporting device
+	uint32_t	interval;		// sampling interval
+	uint16_t	mode;			// sampling mode
+	uint16_t	exporter_sysid; // internal reference to exporter
+
+} sampler_info_record_t;
+
+
+
+/*
+ * TC test code - records will disappear ..
+ */
+typedef struct exporter_record_s {
+	record_header_t	header;
+
+	// exporter data
+	uint32_t 	version;		// make sure it's a version 9 exporter 
+
+	// IP address
+	uint32_t	sa_family;
+	ip_addr_t	ip;
+
+	// internal assigned ID
+	uint32_t	sysid;
+
+	// exporter info
+	uint32_t	exporter_id;
+	uint32_t	sequence_failure;
+
+} exporter_record_t;
+
+typedef struct sampler_record_s {
+	record_header_t	header;
+
+	// reference to exporter
+	uint32_t	exporter_sysid;
+
+	// sampler data
+	int32_t		id;
+	uint32_t	interval;
+	uint8_t		mode;
+} sampler_record_t;
+
+
 // typedef struct master_record_s master_record_t;
 
 /* the master record contains all possible records unpacked */
@@ -894,16 +1130,20 @@ typedef struct master_record_s {
 	uint16_t	type;			// index 0  0xffff 0000 0000 0000
 	uint16_t	size;			// index 0	0x0000'ffff'0000 0000
 	uint8_t		flags;			// index 0	0x0000'0000'ff00'0000
-	uint8_t		exporter_ref;	// index 0	0x0000'0000'00ff'0000
+	uint8_t		exporter_sysid;	// index 0	0x0000'0000'00ff'0000
 	uint16_t	ext_map;		// index 0	0x0000'0000'0000'ffff
+#	define OffsetRecordFlags 	0
+#	define OffsetExporterSysID	0
 #ifdef WORDS_BIGENDIAN
-#	define OffsetRecordFlags 	0
 #	define MaskRecordFlags  	0x00000000ff000000LL
+#	define MaskExporterSysID  	0x0000000000ff0000LL
 #	define ShiftRecordFlags 	24
+#	define ShiftExporterSysID 	16
 #else
-#	define OffsetRecordFlags 	0
 #	define MaskRecordFlags  	0x000000ff00000000LL
+#	define MaskExporterSysID  	0x0000ff0000000000LL
 #	define ShiftRecordFlags 	32
+#	define ShiftExporterSysID 	40
 #endif
 
 	//
@@ -1291,6 +1531,7 @@ typedef struct master_record_s {
 	uint16_t	fill;			// fill	index 31 0xffff'0000'0000'0000
 	uint8_t		engine_type;	// type index 31 0x0000'ff00'0000'0000
 	uint8_t		engine_id;		// ID	index 31 0x0000'00ff'0000'0000
+	uint32_t	fill2;
 
 #	define OffsetRouterID	31
 #ifdef WORDS_BIGENDIAN
@@ -1305,6 +1546,42 @@ typedef struct master_record_s {
 #	define MaskEngineID			0x00000000FF000000LL
 #	define ShiftEngineID		24
 #endif
+
+	// IPFIX extensions in v9
+	// BGP next/prev AS
+	uint32_t	bgpNextAdjacentAS;	// index 32 0xffff'ffff'0000'0000
+	uint32_t	bgpPrevAdjacentAS;	// index 32 0x0000'0000'ffff'ffff
+
+// extension 18
+#	define OffsetBGPadj	32
+#ifdef WORDS_BIGENDIAN
+#	define MaskBGPadjNext		0xFFFFFFFF00000000LL
+#	define ShiftBGPadjNext		32
+#	define MaskBGPadjPrev		0x00000000FFFFFFFFLL
+#	define ShiftBGPadjPrev		0
+
+#else
+#	define MaskBGPadjNext		0x00000000FFFFFFFFLL
+#	define ShiftBGPadjNext		0
+#	define MaskBGPadjPrev		0xFFFFFFFF00000000LL
+#	define ShiftBGPadjPrev		32
+#endif
+
+	// nprobe extensions
+	// latency extension
+	uint64_t	client_nw_delay_usec;	// index 32 0xffff'ffff'ffff'ffff
+	uint64_t	server_nw_delay_usec;	// index 33 0xffff'ffff'ffff'ffff
+	uint64_t	appl_latency_usec;		// index 34 0xffff'ffff'ffff'ffff
+
+#define LATENCY_BASE_OFFSET     (offsetof(master_record_t, client_nw_delay_usec) >> 3)
+#   define OffsetClientLatency  LATENCY_BASE_OFFSET
+#   define OffsetServerLatency  LATENCY_BASE_OFFSET + 1
+#   define OffsetAppLatency     LATENCY_BASE_OFFSET + 2
+#   define MaskLatency          0xFFFFFFFFFFFFFFFFLL
+#   define ShiftLatency         0
+
+	// flow received time in ms
+	uint64_t	received;
 
 /* possible user extensions may fit here
  * - Put each extension into its own #ifdef
@@ -1328,7 +1605,11 @@ typedef struct master_record_s {
 
 #endif
 
+	// reference to exporter
+	exporter_info_record_t	*exp_ref;
+
 	// last entry in master record 
+#	define Offset_MR_LAST	offsetof(master_record_t, map_ref)
 	extension_map_t	*map_ref;
 } master_record_t;
 
@@ -1364,6 +1645,9 @@ typedef struct type_mask_s {
  * 				for IPv4 netflow v5/v7	12
  */
 
+/*
+ * exporter records
+ */
 
 #ifdef COMPAT15
 /*
@@ -1395,9 +1679,11 @@ typedef struct common_record_v1_s {
 
 #endif
 
+
 // a few handy shortcuts
 #define FILE_IS_COMPRESSED(n) ((n)->file_header->flags & FLAG_COMPRESSED)
-#define HAS_EXTENDED_STAT(n) ((n)->file_header->flags & FLAG_EXTENDED_STATS)
+#define BLOCK_IS_COMPRESSED(n) ((n)->flags == 2 )
+#define HAS_CATALOG(n) ((n)->file_header->flags & FLAG_CATALOG)
 #define IP_ANONYMIZED(n) ((n)->file_header->flags & FLAG_ANONYMIZED)
 
 void SumStatRecords(stat_record_t *s1, stat_record_t *s2);
@@ -1431,7 +1717,6 @@ int WriteExtraBlock(nffile_t *nffile, data_block_header_t *block_header);
 void UnCompressFile(char * filename);
 
 void ExpandRecord_v1(common_record_t *input_record,master_record_t *output_record );
-
 
 #ifdef COMPAT15
 void Convert_v1_to_v2(void *mem);

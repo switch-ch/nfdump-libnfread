@@ -60,6 +60,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "netflow_v1.h"
 
 #ifndef DEVEL
@@ -76,7 +77,7 @@ static extension_info_t v1_extension_info;		// common for all v1 records
 static uint16_t v1_output_record_size;
 
 // All required extension to save full v1 records
-static uint16_t v1_full_mapp[] = { EX_IO_SNMP_2, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, 0 };
+static uint16_t v1_full_mapp[] = { EX_IO_SNMP_2, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, EX_RECEIVED, 0 };
 
 typedef struct v1_block_s {
 	uint32_t	srcaddr;
@@ -88,13 +89,18 @@ typedef struct v1_block_s {
 #define V1_BLOCK_DATA_SIZE (sizeof(v1_block_t) - sizeof(uint32_t))
 
 typedef struct exporter_v1_s {
-	// link chain
+	// identical to generic_exporter_t
 	struct exporter_v1_s *next;
 
-	// exporter identifier
-	uint32_t version;
-	ip_addr_t	ip;
-	uint32_t	sa_family;
+	// generic exporter information
+	exporter_info_record_t info;
+
+	uint64_t	packets;			// number of packets sent by this exporter
+	uint64_t	flows;				// number of flow records sent by this exporter
+	uint32_t	sequence_failure;	// number of sequence failues
+
+	generic_sampler_t		*sampler;
+	// End of generic_exporter_t
 
 	// extension map
 	extension_map_t 	 *extension_map;
@@ -102,8 +108,6 @@ typedef struct exporter_v1_s {
 } exporter_v1_t;
 
 static inline exporter_v1_t *GetExporter(FlowSource_t *fs, netflow_v1_header_t *header);
-
-static inline int CheckBufferSpace(nffile_t *nffile, size_t required);
 
 /* functions */
 
@@ -175,8 +179,8 @@ char ipstr[IP_STRING_LEN];
 
 	// search the appropriate exporter engine
 	while ( *e ) {
-		if ( (*e)->version == version && 
-			 (*e)->ip.v6[0] == fs->ip.v6[0] && (*e)->ip.v6[1] == fs->ip.v6[1]) 
+		if ( (*e)->info.version == version && 
+			 (*e)->info.ip.v6[0] == fs->ip.v6[0] && (*e)->info.ip.v6[1] == fs->ip.v6[1]) 
 			return *e;
 		e = &((*e)->next);
 	}
@@ -188,11 +192,17 @@ char ipstr[IP_STRING_LEN];
 		return NULL;
 	}
 	memset((void *)(*e), 0, sizeof(exporter_v1_t));
-	(*e)->ip.v6[0]			= fs->ip.v6[0];
-	(*e)->ip.v6[1]			= fs->ip.v6[1];
-	(*e)->sa_family			= fs->sa_family;
+	(*e)->info.header.type  = ExporterInfoRecordType;
+	(*e)->info.header.size  = sizeof(exporter_info_record_t);
+	(*e)->info.version 		= version;
+	(*e)->info.id			= 0;
+	(*e)->info.ip			= fs->ip;
+	(*e)->info.sa_family	= fs->sa_family;
 	(*e)->next	 			= NULL;
-	(*e)->version	 		= version;
+	(*e)->packets			= 0;
+	(*e)->flows				= 0;
+	(*e)->sequence_failure	= 0;
+	(*e)->sampler			= NULL;
 
 	// copy the v1 generic extension map
 	(*e)->extension_map		= (extension_map_t *)malloc(v1_extension_info.map->size);
@@ -212,6 +222,9 @@ char ipstr[IP_STRING_LEN];
 		return NULL;
 	}
 
+	(*e)->info.sysid = 0;
+	FlushInfoExporter(fs, &((*e)->info));
+
 	if ( fs->sa_family == AF_INET ) {
 		uint32_t _ip = htonl(fs->ip.v4);
 		inet_ntop(AF_INET, &_ip, ipstr, sizeof(ipstr));
@@ -224,8 +237,9 @@ char ipstr[IP_STRING_LEN];
 		strncpy(ipstr, "<unknown>", IP_STRING_LEN);
 	}
 
-	dbg_printf("New Exporter: v1 Extension ID: %i, IP: %s, \n", (*e)->extension_map->map_id, ipstr);
-	syslog(LOG_INFO, "Process_v1: New exporter: IP: %s\n", ipstr);
+	dbg_printf("New Exporter: v1 SysID: %u, Extension ID: %i, IP: %s, \n", 
+		(*e)->info.sysid, (*e)->extension_map->map_id, ipstr);
+	syslog(LOG_INFO, "Process_v1: SysID: %u, New exporter: IP: %s\n", (*e)->info.sysid, ipstr);
 
 	return (*e);
 
@@ -254,6 +268,8 @@ char		*string;
 			return;
 		}
 		flags = 0;
+
+		exporter->packets++;
 
 		extension_map = exporter->extension_map;
 		flow_record_length = NETFLOW_V1_RECORD_LENGTH;
@@ -314,7 +330,7 @@ char		*string;
 				// header data
 	  			common_record->flags		= flags;
 	  			common_record->type			= CommonRecordType;
-	  			common_record->exporter_ref	= 0;
+	  			common_record->exporter_sysid = exporter->info.sysid;
 	  			common_record->ext_map		= extension_map->map_id;
 	  			common_record->size			= v1_output_record_size;
 
@@ -354,6 +370,12 @@ char		*string;
 							data_ptr = (void *)tpl->data;
 							ClearFlag(common_record->flags, FLAG_IPV6_EXP);
 							} break;
+						case EX_RECEIVED: {
+							tpl_ext_27_t *tpl = (tpl_ext_27_t *)data_ptr;
+							tpl->received  = (uint64_t)((uint64_t)fs->received.tv_sec * 1000LL) + (uint64_t)((uint64_t)fs->received.tv_usec / 1000LL);
+							data_ptr = (void *)tpl->data;
+							} break;
+
 						default:
 							// this should never happen, as v1 has no other extensions
 							syslog(LOG_ERR,"Process_v1: Unexpected extension %i for v1 record. Skip extension", id);
@@ -424,6 +446,7 @@ char		*string;
 						fs->nffile->stat_record->numpackets_other += v1_block->dPkts;
 						fs->nffile->stat_record->numbytes_other   += v1_block->dOctets;
 				}
+				exporter->flows++;
 				fs->nffile->stat_record->numflows++;
 				fs->nffile->stat_record->numpackets	+= v1_block->dPkts;
 				fs->nffile->stat_record->numbytes	+= v1_block->dOctets;
@@ -454,7 +477,7 @@ char		*string;
 
 				if ( verbose ) {
 					master_record_t master_record;
-					ExpandRecord_v2((common_record_t *)common_record, &v1_extension_info, &master_record);
+					ExpandRecord_v2((common_record_t *)common_record, &v1_extension_info, &(exporter->info), &master_record);
 				 	format_file_block_record(&master_record, &string, 0);
 					printf("%s\n", string);
 				}
@@ -504,3 +527,4 @@ char		*string;
 	return;
 
 } /* End of Process_v1 */
+

@@ -59,6 +59,7 @@ typedef struct FlowTableRecord {
 	uint64_t	counter[5];
 
 	extension_map_t	*map_ref;
+	exporter_info_record_t *exp_ref;
 	// flow record follows
 	// flow data size may vary depending on the number of extensions
 	// common_record_t already contains a pointer to more data ( extensions ) at the end
@@ -133,8 +134,6 @@ void Dispose_FlowTable(void);
 char *VerifyStat(uint16_t Aggregate_Bits);
 
 int SetStat(char *str, int *element_stat, int *flow_stat);
-
-int SetStat_DefaultOrder(char *order);
 
 void InsertFlow(common_record_t *raw_record, master_record_t *flow_record);
 

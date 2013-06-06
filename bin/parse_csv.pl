@@ -85,8 +85,10 @@ my @tags;
 # ismc,odmc	input src, output dst MAC
 # idmc,osmc	input dst, output src MAC
 # mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10 MPLS label 1-10
+# cl,sl,al  client server application latency (nprobe)
 # ra		router IP
 # eng		router engine type/id
+# exid		exporter SysID
 #
 # usage: ./nfdump -r ... -o csv | ./parse_csv.pl
 #
@@ -180,8 +182,12 @@ MPLS 7         : $$line{'mpls7'}
 MPLS 8         : $$line{'mpls8'}
 MPLS 8         : $$line{'mpls8'}
 MPLS 10        : $$line{'mpls10'}
+Client latency : $$line{'cl'}
+Server latency : $$line{'sl'}
+Appl.  latency : $$line{'al'}
 Router IP      : $$line{'ra'}
 Engine type/id : $$line{'eng'}
+Exporter SysID : $$line{'exid'}
 \n";
 	}
 	print "\n";
