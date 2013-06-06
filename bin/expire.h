@@ -58,9 +58,9 @@ uint64_t ParseTimeDef(char *s, uint64_t *value);
 
 void RescanDir(char *dir, dirstat_t *dirstat);
 
-void ExpireDir(char *dir, dirstat_t *dirstat, uint64_t maxsize, uint64_t maxlife );
+void ExpireDir(char *dir, dirstat_t *dirstat, uint64_t maxsize, uint64_t maxlife, uint32_t runtime );
 
-void ExpireProfile(channel_t *channel, dirstat_t *current_stat, uint64_t maxsize, uint64_t maxlife );
+void ExpireProfile(channel_t *channel, dirstat_t *current_stat, uint64_t maxsize, uint64_t maxlife, uint32_t runtime );
 
 void UpdateBookStat(dirstat_t *dirstat, bookkeeper_t *books);
 

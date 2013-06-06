@@ -292,17 +292,17 @@ uint32_t	flow_stat_order;
  * pps, bps and bpp are not directly available in the flow/stat record
  * therefore we need a function to calculate these values
  */
-typedef uint32_t (*order_proc_record_t)(FlowTableRecord_t *);
-typedef uint32_t (*order_proc_element_t)(StatRecord_t *);
+typedef uint64_t (*order_proc_record_t)(FlowTableRecord_t *);
+typedef uint64_t (*order_proc_element_t)(StatRecord_t *);
 
 /* order functions */
-static inline uint32_t	pps_record(FlowTableRecord_t *record);
-static inline uint32_t	bps_record(FlowTableRecord_t *record);
-static inline uint32_t	bpp_record(FlowTableRecord_t *record);
+static inline uint64_t	pps_record(FlowTableRecord_t *record);
+static inline uint64_t	bps_record(FlowTableRecord_t *record);
+static inline uint64_t	bpp_record(FlowTableRecord_t *record);
 
-static inline uint32_t	pps_element(StatRecord_t *record);
-static inline uint32_t	bps_element(StatRecord_t *record);
-static inline uint32_t	bpp_element(StatRecord_t *record);
+static inline uint64_t	pps_element(StatRecord_t *record);
+static inline uint64_t	bps_element(StatRecord_t *record);
+static inline uint64_t	bpp_element(StatRecord_t *record);
 
 struct order_mode_s {
 	char		 *string;	// Stat name 
@@ -360,7 +360,7 @@ static int	NumStats = 0, DefaultOrder;
 #include "heapsort_inline.c"
 #include "applybits_inline.c"
 
-static uint32_t	pps_record(FlowTableRecord_t *record) {
+static uint64_t	pps_record(FlowTableRecord_t *record) {
 uint64_t		duration;
 
 	/* duration in msec */
@@ -372,7 +372,7 @@ uint64_t		duration;
 
 } // End of pps_record
 
-static uint32_t	bps_record(FlowTableRecord_t *record) {
+static uint64_t	bps_record(FlowTableRecord_t *record) {
 uint64_t		duration;
 
 	duration = 1000*(record->flowrecord.last - record->flowrecord.first) + record->flowrecord.msec_last - record->flowrecord.msec_first;
@@ -383,13 +383,13 @@ uint64_t		duration;
 
 } // End of bps_record
 
-static uint32_t	bpp_record(FlowTableRecord_t *record) {
+static uint64_t	bpp_record(FlowTableRecord_t *record) {
 	
 	return record->counter[INPACKETS] ? record->counter[INBYTES] / record->counter[INPACKETS] : 0;
 
 } // End of bpp_record
 
-static uint32_t	pps_element(StatRecord_t *record) {
+static uint64_t	pps_element(StatRecord_t *record) {
 uint64_t		duration;
 
 	/* duration in msec */
@@ -401,7 +401,7 @@ uint64_t		duration;
 
 } // End of pps_element
 
-static uint32_t	bps_element(StatRecord_t *record) {
+static uint64_t	bps_element(StatRecord_t *record) {
 uint64_t		duration;
 
 	duration = 1000*(record->last - record->first) + record->msec_last - record->msec_first;
@@ -412,7 +412,7 @@ uint64_t		duration;
 
 } // End of bps_element
 
-static uint32_t	bpp_element(StatRecord_t *record) {
+static uint64_t	bpp_element(StatRecord_t *record) {
 	
 	return record->counter[INPACKETS] ? record->counter[INBYTES] / record->counter[INPACKETS] : 0;
 
@@ -875,7 +875,8 @@ static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type,
 char		proto[16], valstr[40], datestr[64], flows_str[32], byte_str[32], packets_str[32], pps_str[32], bps_str[32];
 char tag_string[2];
 double		duration, flows_percent, packets_percent, bytes_percent;
-uint32_t	pps, bps, bpp;
+uint32_t	bpp;
+uint64_t	pps, bps;
 time_t		first;
 struct tm	*tbuff;
 
@@ -933,8 +934,8 @@ struct tm	*tbuff;
 	duration += ((double)StatData->msec_last - (double)StatData->msec_first) / 1000.0;
 	
 	if ( duration != 0 ) {
-		pps = (uint32_t)((double)StatData->counter[INPACKETS] / duration);
-		bps = (uint32_t)((double)(8 * StatData->counter[INBYTES]) / duration);
+		pps = (uint64_t)((double)StatData->counter[INPACKETS] / duration);
+		bps = (uint64_t)((double)(8 * StatData->counter[INBYTES]) / duration);
 	} else {
 		pps = bps = 0;
 	}

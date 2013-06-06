@@ -365,7 +365,7 @@ option_offset_t	**t;
 			fprintf(stderr, "malloc() allocation error: %s\n", strerror(errno));
 			return ;
 		} 
-		dbg_printf("Process_v9: New sampler at offsets: ID %i, mode: %i, interval: %i", 
+		dbg_printf("Process_v9: New sampler at offsets: ID %i, mode: %i, interval: %i\n", 
 			offset_sampler_id, offset_sampler_mode, offset_sampler_interval);
 	}	// else existing table
 

@@ -252,7 +252,7 @@ int				ret, bookkeeper_stat, do_rescan;
 	syslog(LOG_INFO, "Run expire on '%s'", datadir);
 
 	do_rescan = 0;
-	ret = ReadStatInfo(datadir, &dirstat, CRETAE_AND_LOCK);
+	ret = ReadStatInfo(datadir, &dirstat, CREATE_AND_LOCK);
 	switch (ret) {
 		case STATFILE_OK:
 			break;
@@ -303,7 +303,7 @@ int				ret, bookkeeper_stat, do_rescan;
 
 	oldstat = *dirstat;
 	if ( dirstat->max_size || dirstat->max_lifetime ) 
-		ExpireDir(datadir, dirstat, dirstat->max_size, dirstat->max_lifetime);
+		ExpireDir(datadir, dirstat, dirstat->max_size, dirstat->max_lifetime, 0);
 	WriteStatInfo(dirstat);
 
 	if ( (oldstat.numfiles - dirstat->numfiles) > 0 ) {
@@ -394,7 +394,7 @@ srecord_t	*InfoRecord;
 					if ( args[0] )
 						cmd_execute(args);
 
-					// don not flood the system with new processes
+					// do not flood the system with new processes
 					sleep(1);
 					// else cmd_parse already reported the error
 					free(cmd);

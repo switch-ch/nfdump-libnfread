@@ -12,7 +12,8 @@ is automatically rotated and renamed every n minutes \- typically
 5 min \- according the timestamp YYYYMMddhhmm of the interval e.g. 
 nfcapd.200907110845 contains the data from July 11th 2009 08:45 onward.
 .P
-Netflow version v1, v5, v7 and v9 are transparently supported.
+Netflow version v1, v5, v7 and v9 and IPFIX are transparently supported.
+IPFIX support is experimental for this release.
 .P
 Extensions: nfcapd supports a large number of v9 tags. In order to optimise
 disk space and performance, v9 tags are grouped into a number of extensions
@@ -422,6 +423,9 @@ NF9_ENGINE_ID          39            14
 .RE
 .PD
 32 and 64 bit are supported for all counters. 32it AS numbers are supported.
+.P
+IPFIX support is experimental. Due to lack of implementation of sampling
+in many IPFIX exporters, sampling for IPFIX is not yet supported.
 .P
 The format of the data files is netflow version independent.
 .P

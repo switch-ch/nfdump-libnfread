@@ -299,8 +299,13 @@ uint64_t	bps, pps, bpp;
 char 		byte_str[32], packet_str[32], bps_str[32], pps_str[32], bpp_str[32];
 
 	bps = pps = bpp = 0;
-	duration = stat_record->last_seen - stat_record->first_seen;
-	duration += ((double)stat_record->msec_last - (double)stat_record->msec_first) / 1000.0;
+	if ( stat_record->last_seen ) {
+		duration = stat_record->last_seen - stat_record->first_seen;
+		duration += ((double)stat_record->msec_last - (double)stat_record->msec_first) / 1000.0;
+	} else {
+		// no flows to report
+		duration = 0;
+	}
 	if ( duration > 0 && stat_record->last_seen > 0 ) {
 		bps = ( stat_record->numbytes << 3 ) / duration;	// bits per second. ( >> 3 ) -> * 8 to convert octets into bits
 		pps = stat_record->numpackets / duration;			// packets per second
@@ -349,10 +354,6 @@ int	v1_map_done = 0;
 	stat_record.first_seen = 0x7fffffff;
 	stat_record.msec_first = 999;
 
-	// time window of all processed flows
-	t_first_flow = 0x7fffffff;
-	t_last_flow  = 0;
-
 	// Do the logic first
 
 	// print flows later, when all records are processed and sorted
@@ -381,6 +382,14 @@ int	v1_map_done = 0;
 		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return stat_record;
 	}
+	if ( nffile_r == EMPTY_LIST ) {
+		LogError("Empty file list. No files to process\n");
+		return stat_record;
+	}
+
+	// preset time window of all processed flows to the stat record in first flow file
+	t_first_flow = nffile_r->stat_record->first_seen;
+	t_last_flow  = nffile_r->stat_record->last_seen;
 
 	// store infos away for later use
 	// although multiple files may be processed, it is assumed that all 
@@ -434,12 +443,17 @@ int	v1_map_done = 0;
 				nffile_t *next = GetNextFile(nffile_r, twin_start, twin_end);
 				if ( next == EMPTY_LIST ) {
 					done = 1;
-				}
-				if ( next == NULL ) {
+				} else if ( next == NULL ) {
 					done = 1;
 					LogError("Unexpected end of file list\n");
+				} else {
+					// Update global time span window
+					if ( next->stat_record->first_seen < t_first_flow )
+						t_first_flow = next->stat_record->first_seen;
+					if ( next->stat_record->last_seen > t_last_flow ) 
+						t_last_flow = next->stat_record->last_seen;
+					// continue with next file
 				}
-				// else continue with next file
 				continue;
 
 				} break; // not really needed
@@ -550,12 +564,6 @@ int	v1_map_done = 0;
 				// Records passed filter -> continue record processing
 				// Update statistics
 				UpdateStat(&stat_record, master_record);
-
-				// Update global time span window
-				if ( master_record->first < t_first_flow )
-					t_first_flow = master_record->first;
-				if ( master_record->last > t_last_flow ) 
-					t_last_flow = master_record->last;
 
 				// update number of flows matching a given map
 				extension_map_list.slot[map_id]->ref_count++;
@@ -1102,9 +1110,10 @@ char 		Ident[IDENTLEN];
 						limitflows, do_tag, compress, do_xstat);
 	nfprof_end(&profile_data, total_flows);
 
-	if ( total_bytes == 0 )
+	if ( total_bytes == 0 ) {
+		printf("No matched flows\n");
 		exit(0);
-
+	}
 
 	if (aggregate || date_sorted) {
 		if ( wfile ) {
@@ -1141,7 +1150,12 @@ char 		Ident[IDENTLEN];
 			if (is_anonymized)
 				printf("IP addresses anonymised\n");
 			PrintSummary(&sum_stat, plain_numbers, csv_output);
- 			printf("Time window: %s\n", TimeString(t_first_flow, t_last_flow));
+			if ( t_last_flow == 0 ) {
+				// in case of a pre 1.6.6 collected and empty flow file
+ 				printf("Time window: <unknown>\n");
+			} else {
+ 				printf("Time window: %s\n", TimeString(t_first_flow, t_last_flow));
+			}
 			printf("Total flows processed: %u, Blocks skipped: %u, Bytes read: %llu\n", 
 				total_flows, skipped_blocks, (unsigned long long)total_bytes);
 			nfprof_print(&profile_data, stdout);

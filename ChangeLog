@@ -1,4 +1,21 @@
-2011-12-xx 1.6.5
+2011-03-12 1.6.6
+- Minor IPFIX bug.
+- IPFIX implement template withdraw
+- For IPFIX, check packet sequence per template and observation domain
+- Fix time window, when no flows collected or no flows matched
+  while processing
+- Fixed typos
+- Fix seg fault bug - test for EMPTY_LIST was missing at several places.
+
+2011-02-19 1.6.6b1
+- Fix bps/pps. make it uint64_t, as bps/pps > 4Gb/s overflows.
+- In record raw print mode: decode ICMP instead of src/dst ports
+- sflow use announced exporter IP instead of sending IP for router ID
+- sflow: Ignore extra fill bytes. Do not complain.
+- sflow: fix packet length issue.
+- Add IPFIX protokoll support
+
+2011-12-31 1.6.5
 - Fix 64bit bug when using byte/packet limits
 - for v5 and sampling use 64bit counters to prevent overflow for large sampled flows.
 - Fixed Ident printig bug

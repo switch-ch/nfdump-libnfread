@@ -59,7 +59,7 @@ typedef struct dirstat_env_s {
 enum { STATFILE_OK = 0, ERR_FAIL, ERR_NOSTATFILE, FORCE_REBUILD };
 
 #define READ_ONLY	0
-#define CRETAE_AND_LOCK	1
+#define CREATE_AND_LOCK	1
 #define LOCK_IF_EXISTS	2
 
 #define stat_filename ".nfstat"

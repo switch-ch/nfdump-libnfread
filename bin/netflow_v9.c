@@ -1529,7 +1529,7 @@ static int pkg_num = 0;
 	pkg_num++;
 	size_left = in_buff_cnt;
 	if ( size_left < NETFLOW_V9_HEADER_LENGTH ) {
-		syslog(LOG_ERR, "Process_v9: Too little data for v9 packets: '%lli'", (long long)size_left);
+		syslog(LOG_ERR, "Process_v9: Too little data for v9 packet: '%lli'", (long long)size_left);
 		return;
 	}
 
@@ -1553,7 +1553,7 @@ static int pkg_num = 0;
 
 	size_left -= NETFLOW_V9_HEADER_LENGTH;
 
-	dbg_printf("\n[%u] Next packet: %i %u records, buffer: %li \n", pkg_num, exporter_id, expected_records, size_left);
+	dbg_printf("\n[%u] Next packet: %i %u records, buffer: %li \n", exporter_id, pkg_num, expected_records, size_left);
 	// sequence check
 	if ( exporter->first ) {
 		exporter->last_sequence = ntohl(v9_header->sequence);
@@ -1592,18 +1592,24 @@ static int pkg_num = 0;
 			exporter->exporter_id, flowset_id, flowset_length, size_left, 
 			(long long unsigned)(flowset_header - in_buff) );
 
-		if ( flowset_length <= 4 ) {
+		if ( flowset_length == 0 ) {
 			/* 	this should never happen, as 4 is an empty flowset 
 				and smaller is an illegal flowset anyway ...
 				if it happends, we can't determine the next flowset, so skip the entire export packet
 			 */
-			syslog(LOG_ERR,"Process_v9: flowset length error. '%u' is too short for a flowset", flowset_length);
-			dbg_printf("Process_v9: flowset length error. '%u' is too short for a flowset\n", flowset_length);
+			syslog(LOG_ERR,"Process_v9: flowset zero length error.");
+			dbg_printf("Process_v9: flowset zero length error.\n");
 			return;
 		}
 
+		// possible padding
+		if ( flowset_length <= 4 ) {
+			size_left = 0;
+			continue;
+		}
+
 		if ( flowset_length > size_left ) {
-			syslog(LOG_ERR,"Process_v9: flowset length error. Expected bytes: %u but buffersize: %lli", 
+			syslog(LOG_ERR,"Process_v9: flowset length error. Expected bytes: %u > buffersize: %lli", 
 				flowset_length, (long long)size_left);
 			size_left = 0;
 			continue;
@@ -1630,22 +1636,22 @@ static int pkg_num = 0;
 				if ( flowset_id < NF9_MIN_RECORD_FLOWSET_ID ) {
 					dbg_printf("Invalid flowset id: %u\n", flowset_id);
 					syslog(LOG_ERR,"Process_v9: Invalid flowset id: %u", flowset_id);
-				}
-
-				dbg_printf("[%u] ID %u Data flowset\n", exporter->exporter_id, flowset_id);
-
-				table = GetTranslationTable(exporter, flowset_id);
-				if ( table ) {
-					Process_v9_data(exporter, flowset_header, fs, table);
-				} else if ( HasOptionTable(fs, flowset_id) ) {
-					Process_v9_option_data(exporter, flowset_header, fs);
 				} else {
-					// maybe a flowset with option data
-					dbg_printf("Process v9: [%u] No table for id %u -> Skip record\n", 
-						exporter->exporter_id, flowset_id);
-				}
 
+					dbg_printf("[%u] ID %u Data flowset\n", exporter->exporter_id, flowset_id);
+
+					table = GetTranslationTable(exporter, flowset_id);
+					if ( table ) {
+						Process_v9_data(exporter, flowset_header, fs, table);
+					} else if ( HasOptionTable(fs, flowset_id) ) {
+						Process_v9_option_data(exporter, flowset_header, fs);
+					} else {
+						// maybe a flowset with option data
+						dbg_printf("Process v9: [%u] No table for id %u -> Skip record\n", 
+							exporter->exporter_id, flowset_id);
+					}
 				}
+			}
 		}
 
 		// next flowset
