@@ -259,13 +259,18 @@ typedef struct nffile_s {
 #define ExtensionMapType	2
 #define PortHistogramType	3
 #define BppHistogramType	4
-// TC code
+
+// TC code - phased out
 #define ExporterRecordType	5
 #define SamplerRecordype	6
 
+// replaces TC Types
 #define ExporterInfoRecordType	7
 #define ExporterStatRecordType	8
 #define SamplerInfoRecordype	9
+
+// new extension record type for 1.7
+#define ExtensionMap17Type	10
 
  /* 
  * All records are 32bit aligned and layouted in a 64bit array. The numbers placed in () refer to the netflow v9 type id.
@@ -283,10 +288,9 @@ typedef struct nffile_s {
  * bit  2:	0: 32bit dOctets	 1: 64bit dOctets 
  * bit  3:  0: IPv4 next hop     1: IPv6 next hop
  * bit  4:  0: IPv4 BGP next hop 1: BGP IPv6 next hop
- * bit  5:  0:                   1:
- * bit  6:  0:                   1:
- * bit  7:  0:                   1:
- * bit  8:  0: unsampled         1: sampled flow - sampling applied
+ * bit  5:  0: IPv4 exporter IP  1: IPv6 exporter IP
+ * bit  6:  0: flow              1: event
+ * bit  7:  0: unsampled         1: sampled flow - sampling applied
  * 
  * Required extensions: 1,2,3
  * ------------------------------
@@ -1128,8 +1132,8 @@ typedef struct tpl_ext_48_s {
 /* 
  * 
  * 
- * Extension map:
- * =============
+ * V1 Extension map:
+ * =================
  * The extension map replaces the individual flags in v1 layout. With many possible extensions and combination of extensions
  * an extension map is more efficient and flexible while reading and decoding the record.
  * In current version of nfdump, up to 65535 individual extension maps are supported, which is considered to be enough.
@@ -1167,6 +1171,52 @@ typedef struct extension_map_s {
 	uint16_t	ex_id[1];		// extension id array
 } extension_map_t;
 
+
+/* 
+ * 
+ * 
+ * V2 Extension map:
+ * =================
+ * The V2 extension map replaces the V1 extension map. The basic extension architecture remains the same. V2 extensions
+ * adds extra information about the extension such as size and offset within the packed record. This allows more 
+ * flexibility by using flexible length extensions up to the extension defined maximum. With the introduction of V2
+ * extension maps, the old master_record will become obsolete in near future.
+ * Implementation wise: if extension size is set to 0 - the first 2 bytes of the extension data contains the size of
+ * the extension. Extensions with flexible size must only appended at the end of the record block.
+ * 
+ * For each available extension record, the ids are recorded in the extension map in the order they appear.
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  - |	     0     |      1       |      2       |      3       |      4       |      5       |      6       |      7       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |       record type == 10     |             size            |            map id           |      max extension size     |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |       extension id 1        |   offset extension id 1     |        extension id 2       |    offset extension id 2    | 
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |       extension id 3        |   offset extension id 3     |        extension id 4       |    offset extension id 4    | 
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * ...
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  n |       extension id n        |      size extension id n    |              0              |              0              |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+
+/* extension IDs above are 16 bit integers. So themax number of available extensions is */
+#define MAX_EXTENSIONS 65536
+/* XXX extension 1.7
+typedef struct extension_map17_s {
+ 	// record head
+ 	uint16_t	type;	// is ExtensionMapType2
+ 	uint16_t	size;	// size of full map incl. header
+
+	// map data
+	uint16_t	map_id;			// identifies this map
+ 	uint16_t	extension_size; // max size of all extensions
+	struct ex_def_s {
+		uint16_t	id;		// extension id
+		uint16_t	offset;	// max extension size
+	} ex[1];				// array of all extensions
+} extension_map17_t;
+*/
 
 // see nfx.c - extension_descriptor
 #ifdef NEL
@@ -1493,6 +1543,9 @@ typedef struct master_record_s {
 			uint64_t	dstaddr[2];	// dstaddr[0-1] index 8 0xffff'ffff'ffff'ffff
 									// dstaddr[2-3] index 9 0xffff'ffff'ffff'ffff
 		} _v6;
+		struct _ip64_s {
+			uint64_t	addr[4];
+		} _ip_64;
 	} ip_union;
 
 #ifdef WORDS_BIGENDIAN
@@ -1908,6 +1961,7 @@ typedef struct master_record_s {
 	uint16_t	post_src_port;			// OffsetNELcommon 0x0000'0000'ffff'0000
 	uint16_t	post_dst_port;			// OffsetNELcommon 0x0000'0000'0000'ffff
 	uint32_t	ingress_vrfid;			// OffsetVRFID	   0xffff'ffff'0000'0000
+	uint32_t	nat_fill2;				// aligne 64 bit
 
 #ifdef WORDS_BIGENDIAN
 #	define MasNATevent		0xFF00000000000000LL

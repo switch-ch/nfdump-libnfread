@@ -1,3 +1,13 @@
+2013-05-16 v1.6.10
+- Fix SPARC compile/optimise bug
+- Add output packet/bytes counter to global stat - importatnt for NSEL flows ASA > 8.5
+- Add NSEL filter options xnet
+- Modify extension descriptor code for nfdump1.7. Still use 1.6 extension map layout for compatibility
+- Add prototype for nfpcapd - pcap -> nfdump collector. Converts traffoc directly to nfdump files.
+- Fix bug in ipfix module: uninitialised variable
+- Cleanup syslog/LogError calls
+- Fix minor non critical bugs and compile issues
+
 2013-03-02 v1.6.9
 - Fix some bugs in beta 1.6.9 NSEL code
 - Fix bug statistics update with aggreagted flow records

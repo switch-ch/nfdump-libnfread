@@ -869,7 +869,7 @@ int	c;
 		}
 	}
 
-	InitExtensionMaps(NULL);
+	InitExtensionMaps(NO_EXTENSION_LIST);
 	SetupExtensionDescriptors(strdup(extension_tags));
 
 	if ( FlowSource == NULL && datadir == NULL ) {

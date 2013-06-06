@@ -74,36 +74,21 @@
 #include "nftree.h"
 #include "nffile.h"
 #include "nf_common.h"
+#include "nfx.h"
 #include "util.h"
 
 /* Global Variables */
 extern char 	*CurrentIdent;
+extern extension_descriptor_t extension_descriptor[];
 
 FilterEngine_data_t	*Engine;
 
 /* exported fuctions */
-void LogError(char *format, ...);
-
 int check_filter_block(char *filter, master_record_t *flow_record, int expect);
 
 void check_offset(char *text, pointer_addr_t offset, pointer_addr_t expect);
 
 void CheckCompression(char *filename);
-
-/* 
- * some modules are needed for daemon code as well as normal stdio code 
- * therefore a generic LogError is defined, which maps in this case
- * to stderr
- */
-void LogError(char *format, ...) {
-va_list var_args;
-
-	va_start(var_args, format);
-	vfprintf(stderr, format, var_args);
-	va_end(var_args);
-
-} // End of LogError
-
 
 int check_filter_block(char *filter, master_record_t *flow_record, int expect) {
 int ret, i;
@@ -243,6 +228,14 @@ void *p;
 #endif
 		exit(255);
     }
+
+	i = 1;
+	do {
+		if ( extension_descriptor[i].id != i ) {
+        	printf("**** FAILED **** Extension id %u != index %u\n", 
+				extension_descriptor[i].id, i);
+		}
+	} while ( extension_descriptor[++i].id );
 
 	p = (void *)c_record.data;
 	if (( (pointer_addr_t)p - (pointer_addr_t)&c_record ) != COMMON_RECORD_DATA_SIZE ) {
@@ -1063,6 +1056,12 @@ void *p;
 	ret = check_filter_block("xip 10.10.10.11", &flow_record, 1);
 	ret = check_filter_block("xip 172.32.7.15", &flow_record, 0);
 	ret = check_filter_block("xip 10.10.10.12", &flow_record, 0);
+	ret = check_filter_block("src xnet 172.32.7.0/24", &flow_record, 1);
+	ret = check_filter_block("src xnet 172.32.8.0/24", &flow_record, 0);
+	ret = check_filter_block("dst xnet 10.10.10.0/24", &flow_record, 1);
+	ret = check_filter_block("dst xnet 10.10.11.0/24", &flow_record, 0);
+	ret = check_filter_block("xnet 172.32.7.0/24", &flow_record, 1);
+	ret = check_filter_block("xnet 10.10.10.0/24", &flow_record, 1);
 
 	inet_pton(PF_INET6, "fe80::2110:abcd:1235:ffff", flow_record.xlate_src_ip.v6);
 	flow_record.xlate_src_ip.v6[0] = ntohll(flow_record.xlate_src_ip.v6[0]);

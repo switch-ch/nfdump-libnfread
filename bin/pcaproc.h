@@ -1,6 +1,5 @@
 /*
- *  Copyright (c) 2009, Peter Haag
- *  Copyright (c) 2004-2008, SWITCH - Teleinformatikdienste fuer Lehre und Forschung
+ *  Copyright (c) 2011, Peter Haag
  *  All rights reserved.
  *  
  *  Redistribution and use in source and binary forms, with or without 
@@ -27,60 +26,44 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
  *  POSSIBILITY OF SUCH DAMAGE.
  *  
- *  $Author: haag $
+ *  $Author$
  *
- *  $Id: nfx.h 48 2010-01-02 08:06:27Z haag $
+ *  $Id$
  *
- *  $LastChangedRevision: 48 $
- *	
+ *  $LastChangedRevision$
+ *  
  */
 
-#ifndef _NFX_H
-#define _NFX_H 1
+typedef struct pcapfile_s {
+	void			*data_buffer;
+	void			*data_ptr;
+	uint32_t		data_size;
+	void			*alternate_buffer;
+	uint32_t		alternate_size;
+	int				pfd;
+	time_t			t_CloseRename;
+	pcap_dumper_t	*pd;
+	pcap_t 			*p;
+	pthread_mutex_t m_pbuff;
+	pthread_cond_t  c_pbuff;
+} pcapfile_t;
 
-// MAX_EXTENSION_MAPS must be a power of 2 
-#define MAX_EXTENSION_MAPS	65536
-#define EXTENSION_MAP_MASK (MAX_EXTENSION_MAPS-1)
+typedef struct proc_stat_s {
+	uint32_t	packets;
+	uint32_t	unknown;
+	uint32_t	skipped;
+	uint32_t	short_snap;
+} proc_stat_t;
 
-typedef struct extension_descriptor_s {
-	uint16_t	id;			// id number
-	uint16_t	size;		// number of bytes
-	uint32_t	user_index;	// index specified by the user to enable this extension
-	uint32_t	enabled;	// extension is enabled or not
-	char		*description;
-} extension_descriptor_t;
+pcapfile_t *OpenNewPcapFile(pcap_t *p, char *filename, pcapfile_t *pcapfile);
 
-typedef struct extension_info_s {
-	struct extension_info_s *next;
-	extension_map_t	*map;
-	uint32_t		ref_count;
-	uint32_t		*offset_cache;
-	master_record_t	master_record;
-} extension_info_t;
+int ClosePcapFile(pcapfile_t *pcapfile);
 
-typedef struct extension_map_list_s {
-	extension_info_t	*slot[MAX_EXTENSION_MAPS];
-	extension_info_t	*map_list;
-	extension_info_t	**last_map;
-	uint32_t			max_used;
-} extension_map_list_t;
+void RotateFile(pcapfile_t *pcapfile, time_t t_CloseRename, int live);
 
-#define NEEDS_EXTENSION_LIST 1
-#define NO_EXTENSION_LIST    0
-extension_map_list_t *InitExtensionMaps(int AllocateList);
+void PcapDump(pcapfile_t *pcapfile,  struct pcap_pkthdr *h, const u_char *sp);
 
-void FreeExtensionMaps(extension_map_list_t *extension_map_list);
+void ProcessFlowNode(FlowSource_t *fs, struct FlowNode *node);
 
-void PackExtensionMapList(extension_map_list_t *extension_map_list);
+void ProcessPacket(NodeList_t *nodeList, proc_stat_t *proc_stat, const struct pcap_pkthdr *hdr, const u_char *data);
 
-int Insert_Extension_Map(extension_map_list_t *extension_map_list, extension_map_t *map);
-
-void SetupExtensionDescriptors(char *options);
-
-void PrintExtensionMap(extension_map_t *map);
-
-int VerifyExtensionMap(extension_map_t *map);
-
-void DumpExMaps(char *filename);
-
-#endif //_NFX_H

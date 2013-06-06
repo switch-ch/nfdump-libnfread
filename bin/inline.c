@@ -35,35 +35,35 @@
  *	
  */
 
-static uint16_t	Get_val16(void *p);
+static inline uint16_t	Get_val16(void *p);
 
-static uint32_t	Get_val24(void *p);
+static inline uint32_t	Get_val24(void *p);
 
-static uint32_t	Get_val32(void *p);
+static inline uint32_t	Get_val32(void *p);
 
-static uint64_t	Get_val40(void *p);
+static inline uint64_t	Get_val40(void *p);
 
-static uint64_t	Get_val48(void *p);
+static inline uint64_t	Get_val48(void *p);
 
-static uint64_t	Get_val56(void *p);
+static inline uint64_t	Get_val56(void *p);
 
-static uint64_t	Get_val64(void *p);
+static inline uint64_t	Get_val64(void *p);
 
-static void	Put_val16(uint16_t v, void *p);
+static inline void	Put_val16(uint16_t v, void *p);
 
-static void	Put_val24(uint32_t v, void *p);
+static inline void	Put_val24(uint32_t v, void *p);
 
-static void	Put_val32(uint32_t v, void *p);
+static inline void	Put_val32(uint32_t v, void *p);
 
-// static void	Put_val40(uint64_t v, void *p);
+// static inline void	Put_val40(uint64_t v, void *p);
 
-static void	Put_val48(uint64_t v, void *p);
+static inline void	Put_val48(uint64_t v, void *p);
 
-// static void	Put_val56(uint64_t v, void *p);
+// static inline void	Put_val56(uint64_t v, void *p);
 
-static void	Put_val64(uint64_t v, void *p);
+static inline void	Put_val64(uint64_t v, void *p);
 
-static uint16_t	Get_val16(void *p) {
+static inline uint16_t	Get_val16(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -78,7 +78,7 @@ type_mask_t mask;
 
 } // End of Get_val16
 
-static uint32_t	Get_val24(void *p) {
+static inline uint32_t	Get_val24(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -97,7 +97,7 @@ type_mask_t mask;
 
 } // End of Get_val24
 
-static uint32_t	Get_val32(void *p) {
+static inline uint32_t	Get_val32(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -117,7 +117,7 @@ type_mask_t mask;
 
 } // End of Get_val32
 
-static uint64_t	Get_val40(void *p) {
+static inline uint64_t	Get_val40(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -145,7 +145,7 @@ type_mask_t mask;
 
 } // End of Get_val40
 
-static uint64_t	Get_val48(void *p) {
+static inline uint64_t	Get_val48(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -173,7 +173,7 @@ type_mask_t mask;
 
 } // End of Get_val48
 
-static uint64_t	Get_val56(void *p) {
+static inline uint64_t	Get_val56(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -201,7 +201,7 @@ type_mask_t mask;
 
 } // End of Get_val56
 
-static uint64_t	Get_val64(void *p) {
+static inline uint64_t	Get_val64(void *p) {
 uint8_t		*in = (uint8_t *)p;
 type_mask_t mask;
 
@@ -229,7 +229,7 @@ type_mask_t mask;
 
 } // End of Get_val64
 
-static void	Put_val16(uint16_t v, void *p) {
+static inline void	Put_val16(uint16_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 
@@ -239,7 +239,7 @@ type_mask_t mask;
 
 } // End of Put_val16
 
-static void	Put_val24(uint32_t v, void *p) {
+static inline void	Put_val24(uint32_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 
@@ -250,7 +250,7 @@ type_mask_t mask;
 
 } // End of Put_val24
 
-static void	Put_val32(uint32_t v, void *p) {
+static inline void	Put_val32(uint32_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 
@@ -265,7 +265,7 @@ type_mask_t mask;
 /*
  * not yet used
  *
-static void	Put_val40(uint64_t v, void *p) {
+static inline void	Put_val40(uint64_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 
@@ -280,7 +280,7 @@ type_mask_t mask;
  *
  */
 
-static void	Put_val48(uint64_t v, void *p) {
+static inline void	Put_val48(uint64_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 
@@ -297,7 +297,7 @@ type_mask_t mask;
 /*
  * not yet used
  *
-static void	Put_val56(uint64_t v, void *p) {
+static inline void	Put_val56(uint64_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 
@@ -314,7 +314,7 @@ type_mask_t mask;
  *
  */
 
-static void	Put_val64(uint64_t v, void *p) {
+static inline void	Put_val64(uint64_t v, void *p) {
 uint8_t		*out = (uint8_t *)p;
 type_mask_t mask;
 

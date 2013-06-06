@@ -27,9 +27,9 @@
  *  
  *  $Author: peter $
  *
- *  $Id: exporter.c 135 2012-11-10 11:40:54Z peter $
+ *  $Id: exporter.c 196 2013-05-06 18:29:05Z peter $
  *
- *  $LastChangedRevision: 135 $
+ *  $LastChangedRevision: 196 $
  *	
  */
 
@@ -37,6 +37,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -98,7 +99,14 @@ int InitExporterList(void) {
 
 int AddExporterInfo(exporter_info_record_t *exporter_record) {
 uint32_t id = exporter_record->sysid;
+int i;
+char *p1, *p2;
 
+	// sanity check
+	if ( id >= MAX_EXPORTERS ) {
+		LogError("Exporter id: %u out of range. Skip exporter", id);
+		return 0;
+	}
 	if ( exporter_list[id] != NULL ) {
 		// slot already taken - check if exporters are identical
 		exporter_record->sysid = exporter_list[id]->info.sysid;
@@ -130,7 +138,15 @@ uint32_t id = exporter_record->sysid;
 		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return 0;
 	}
-	memcpy((void *)&(exporter_list[id]->info), (void *)exporter_record, sizeof(exporter_info_record_t));
+
+	// SPARC gcc fails here, if we use directly a pointer to the struct.
+	// SPARC barfs and core dumps otherwise
+	// memcpy((void *)&(exporter_list[id]->info), (void *)exporter_record, sizeof(exporter_info_record_t));
+	p1 = (char *)&(exporter_list[id]->info);
+	p2 = (char *)exporter_record;
+	for ( i=0; i<sizeof(exporter_info_record_t); i++ ) 
+		*p1++ = *p2++;
+
 	dbg_printf("Insert exporter record in Slot: %i, Sysid: %u\n", id, exporter_record->sysid);
 
 #ifdef DEVEL
@@ -210,20 +226,39 @@ generic_sampler_t	**sampler;
 } // End of AddSamplerInfo
 
 int AddExporterStat(exporter_stats_record_t *stat_record) {
-int i;
+int i, use_copy;
+exporter_stats_record_t *rec;
 
-	for (i=0; i<stat_record->stat_count; i++ ) {
-		uint32_t id = stat_record->stat[i].sysid;
+	// 64bit counters can be potentially unaligned
+	if ( ((ptrdiff_t)stat_record & 0x7) != 0 ) {
+		rec = malloc(stat_record->header.size);
+		if ( !rec ) {
+			LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+			exit(255);
+		}
+		memcpy(rec, stat_record, stat_record->header.size);
+		use_copy = 1;
+	} else {
+		rec = stat_record;
+		use_copy = 0;
+	}
+
+	for (i=0; i<rec->stat_count; i++ ) {
+		uint32_t id = rec->stat[i].sysid;
 		if ( !exporter_list[id] ) {
 			LogError("Exporter SysID: %u not found! - Skip stat record record.\n");
 			continue;
 		}
-		exporter_list[id]->sequence_failure += stat_record->stat[i].sequence_failure;
-		exporter_list[id]->packets 			+= stat_record->stat[i].packets;
-		exporter_list[id]->flows 			+= stat_record->stat[i].flows;
+		exporter_list[id]->sequence_failure += rec->stat[i].sequence_failure;
+		exporter_list[id]->packets 			+= rec->stat[i].packets;
+		exporter_list[id]->flows 			+= rec->stat[i].flows;
 		dbg_printf("Update exporter stat for SysID: %i: Sequence failures: %u, packets: %llu, flows: %llu\n", 
 			id, exporter_list[id]->sequence_failure, exporter_list[id]->packets, exporter_list[id]->flows);
 	}
+
+	if ( use_copy )
+		free(rec);
+
 	return 1;
 
 } // End of AddExporterStat

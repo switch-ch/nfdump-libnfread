@@ -1,6 +1,5 @@
 /*
- *  Copyright (c) 2009, Peter Haag
- *  Copyright (c) 2004-2008, SWITCH - Teleinformatikdienste fuer Lehre und Forschung
+ *  Copyright (c) 2013, Peter Haag
  *  All rights reserved.
  *  
  *  Redistribution and use in source and binary forms, with or without 
@@ -27,60 +26,13 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
  *  POSSIBILITY OF SUCH DAMAGE.
  *  
- *  $Author: haag $
+ *  $Author$
  *
- *  $Id: nfx.h 48 2010-01-02 08:06:27Z haag $
+ *  $Id$
  *
- *  $LastChangedRevision: 48 $
- *	
+ *  $LastChangedRevision$
+ *  
  */
 
-#ifndef _NFX_H
-#define _NFX_H 1
+void content_decode_dns(struct FlowNode	*node, uint8_t *payload, uint32_t payload_size);
 
-// MAX_EXTENSION_MAPS must be a power of 2 
-#define MAX_EXTENSION_MAPS	65536
-#define EXTENSION_MAP_MASK (MAX_EXTENSION_MAPS-1)
-
-typedef struct extension_descriptor_s {
-	uint16_t	id;			// id number
-	uint16_t	size;		// number of bytes
-	uint32_t	user_index;	// index specified by the user to enable this extension
-	uint32_t	enabled;	// extension is enabled or not
-	char		*description;
-} extension_descriptor_t;
-
-typedef struct extension_info_s {
-	struct extension_info_s *next;
-	extension_map_t	*map;
-	uint32_t		ref_count;
-	uint32_t		*offset_cache;
-	master_record_t	master_record;
-} extension_info_t;
-
-typedef struct extension_map_list_s {
-	extension_info_t	*slot[MAX_EXTENSION_MAPS];
-	extension_info_t	*map_list;
-	extension_info_t	**last_map;
-	uint32_t			max_used;
-} extension_map_list_t;
-
-#define NEEDS_EXTENSION_LIST 1
-#define NO_EXTENSION_LIST    0
-extension_map_list_t *InitExtensionMaps(int AllocateList);
-
-void FreeExtensionMaps(extension_map_list_t *extension_map_list);
-
-void PackExtensionMapList(extension_map_list_t *extension_map_list);
-
-int Insert_Extension_Map(extension_map_list_t *extension_map_list, extension_map_t *map);
-
-void SetupExtensionDescriptors(char *options);
-
-void PrintExtensionMap(extension_map_t *map);
-
-int VerifyExtensionMap(extension_map_t *map);
-
-void DumpExMaps(char *filename);
-
-#endif //_NFX_H

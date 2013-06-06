@@ -1120,6 +1120,12 @@ Select an extended NSELL ASA event by number, or optionally compared by a number
 .br
 Select the translated IP address
 .P
+\fB[src|dst] xnet <net>/<num>\fR
+.br
+with \fI<net>\fR as a valid translated IPv4 or IPv6 network and \fI<num>\fR as maskbits. 
+The number of mask bits must match the appropriate address familiy in IPv4 or 
+IPv6. Networks may be abreviated such as 172.16/16 if they are unambiguous.
+.P
 \fB[src|dst] xport <port>\fR
 .br
 Select the translated port

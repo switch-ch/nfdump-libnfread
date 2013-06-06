@@ -795,6 +795,9 @@ printf("DGB: short fts: '%s', filer_first: '%s', filter_last: '%s'\n",
 					continue;
 				if ( strstr(ftsent->fts_name, ".stat") != NULL )
 					continue;
+				// skip pcap file
+				if ( strstr(ftsent->fts_name, "pcap") != NULL )
+					continue;
 
 				if ( file_list_level && (
 					( fts_level != file_list_level ) ||

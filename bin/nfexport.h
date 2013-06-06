@@ -38,7 +38,7 @@
 #ifndef _NFEXPORT_H
 #define _NFEXPORT_H 1
 
-int ExportFlowTable(nffile_t *nffile, int aggregate, int bidir, int date_sorted);
+int ExportFlowTable(nffile_t *nffile, int aggregate, int bidir, int date_sorted, extension_map_list_t *extension_map_list);
 
 #endif //_NFEXPORT_H
 

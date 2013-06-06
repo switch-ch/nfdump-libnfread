@@ -137,8 +137,10 @@ typedef struct input_translation_s {
 	uint64_t	flow_start;				// start time in msec
 	uint64_t	flow_end;				// end time in msec
 	uint32_t	ICMP_offset;			// offset of ICMP type/code in data stream
-	uint64_t    packets;				// total packets - sampling corrected
-	uint64_t    bytes;					// total bytes - sampling corrected
+	uint64_t    packets;				// total (in)packets - sampling corrected
+	uint64_t    bytes;					// total (in)bytes - sampling corrected
+	uint64_t    out_packets;			// total out packets - sampling corrected
+	uint64_t    out_bytes;				// total out bytes - sampling corrected
 //	uint32_t	src_as_offset;
 //	uint32_t	dst_as_offset;
 //	uint32_t	sampler_offset;
@@ -454,9 +456,9 @@ input_translation_t **table;
 
 	// Allocate enough space for all potential ipfix tags, which we support
 	// so template refreshing may change the table size without danger of overflowing 
-	*table = malloc(sizeof(input_translation_t));
+	*table = calloc(1, sizeof(input_translation_t));
 	if ( !(*table) ) {
-			syslog(LOG_ERR, "Process_ipfix: Panic! malloc() %s line %d: %s", __FILE__, __LINE__, strerror (errno));
+			syslog(LOG_ERR, "Process_ipfix: Panic! calloc() %s line %d: %s", __FILE__, __LINE__, strerror (errno));
 			return NULL;
 	}
 	(*table)->sequence = calloc(cache.max_ipfix_elements, sizeof(sequence_map_t));
@@ -607,7 +609,7 @@ size_t				size_required;
 		dbg_printf("[%u] Refresh template %u\n", exporter->info.id, id);
 
 		// very noisy with somee exporters
-		// syslog(LOG_DEBUG, "Process_ipfix: [%u] Refresh template %u", exporter->info.id, id);
+		dbg_printf("[%u] Refresh template %u\n", exporter->info.id, id);
 	}
 	// clear current table
 	memset((void *)table->sequence, 0, cache.max_ipfix_elements * sizeof(sequence_map_t));
@@ -615,6 +617,7 @@ size_t				size_required;
 
 	table->updated  	= time(NULL);
 	// IPFIX only has 64bit counters
+	table->flags			= 0;
 	SetFlag(table->flags, FLAG_PKG_64);
 	SetFlag(table->flags, FLAG_BYTES_64);
 	table->ICMP_offset	= 0;
@@ -826,7 +829,7 @@ size_t				size_required;
 		extension_map->ex_id[next_extension] = 0;
 		extension_map->size = ( extension_map->size + 3 ) &~ 0x3;
 	}
-
+ 
 	table->output_record_size = offset;
 	table->input_record_size  = input_record_size;
 
@@ -1320,6 +1323,8 @@ char				*string;
 		table->flow_end 		    = 0;
 		table->packets 		  	    = 0;
 		table->bytes 		  	    = 0;
+		table->out_packets 	  	    = 0;
+		table->out_bytes 	  	    = 0;
 
 		// apply copy and processing sequence
 		for ( i=0; i<table->number_of_sequences; i++ ) {
@@ -1494,26 +1499,36 @@ char				*string;
 				fs->nffile->stat_record->numflows_icmp++;
 				fs->nffile->stat_record->numpackets_icmp  += table->packets;
 				fs->nffile->stat_record->numbytes_icmp    += table->bytes;
+				fs->nffile->stat_record->numpackets_icmp  += table->out_packets;
+				fs->nffile->stat_record->numbytes_icmp    += table->out_bytes;
 				break;
 			case IPPROTO_TCP:
 				fs->nffile->stat_record->numflows_tcp++;
 				fs->nffile->stat_record->numpackets_tcp   += table->packets;
 				fs->nffile->stat_record->numbytes_tcp     += table->bytes;
+				fs->nffile->stat_record->numpackets_tcp   += table->out_packets;
+				fs->nffile->stat_record->numbytes_tcp     += table->out_bytes;
 				break;
 			case IPPROTO_UDP:
 				fs->nffile->stat_record->numflows_udp++;
 				fs->nffile->stat_record->numpackets_udp   += table->packets;
 				fs->nffile->stat_record->numbytes_udp     += table->bytes;
+				fs->nffile->stat_record->numpackets_udp   += table->out_packets;
+				fs->nffile->stat_record->numbytes_udp     += table->out_bytes;
 				break;
 			default:
 				fs->nffile->stat_record->numflows_other++;
 				fs->nffile->stat_record->numpackets_other += table->packets;
 				fs->nffile->stat_record->numbytes_other   += table->bytes;
+				fs->nffile->stat_record->numpackets_other += table->out_packets;
+				fs->nffile->stat_record->numbytes_other   += table->out_bytes;
 		}
 		exporter->flows++;
 		fs->nffile->stat_record->numflows++;
 		fs->nffile->stat_record->numpackets	+= table->packets;
 		fs->nffile->stat_record->numbytes	+= table->bytes;
+		fs->nffile->stat_record->numpackets	+= table->out_packets;
+		fs->nffile->stat_record->numbytes	+= table->out_bytes;
 	
 		if ( fs->xstat ) {
 			uint32_t bpp = table->packets ? table->bytes/table->packets : 0;

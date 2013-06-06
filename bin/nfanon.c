@@ -71,7 +71,7 @@ typedef uint32_t    pointer_addr_t;
 #endif
 
 // module limited globals
-extension_map_list_t extension_map_list;
+extension_map_list_t *extension_map_list;
 
 /* Function Prototypes */
 static void usage(char *name);
@@ -82,7 +82,9 @@ static void process_data(void *wfile);
 
 /* Functions */
 
+#define NEED_PACKRECORD 1
 #include "nffile_inline.c"
+#undef NEED_PACKRECORD
 
 static void usage(char *name) {
 		printf("usage %s [options] \n"
@@ -299,7 +301,7 @@ int	v1_map_done = 0;
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
 				if ( ! map ) {
-					perror("Memory allocation error");
+					LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 					exit(255);
 				}
 				map->type 	= ExtensionMapType;
@@ -309,7 +311,7 @@ int	v1_map_done = 0;
 				map->ex_id[1]  = EX_AS_2;
 				map->ex_id[2]  = 0;
 
-				Insert_Extension_Map(&extension_map_list, map);
+				Insert_Extension_Map(extension_map_list, map);
 				AppendToBuffer(nffile_w, (void *)map, map->size);
 
 				v1_map_done = 1;
@@ -341,13 +343,13 @@ int	v1_map_done = 0;
 			switch ( flow_record->type ) { 
 				case CommonRecordType: {
 					uint32_t map_id = flow_record->ext_map;
-					if ( extension_map_list.slot[map_id] == NULL ) {
+					if ( extension_map_list->slot[map_id] == NULL ) {
 						LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
 					} else {
-						ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], NULL, &master_record);
+						ExpandRecord_v2( flow_record, extension_map_list->slot[flow_record->ext_map], NULL, &master_record);
 	
 						// update number of flows matching a given map
-						extension_map_list.slot[map_id]->ref_count++;
+						extension_map_list->slot[map_id]->ref_count++;
 			
 						AnonRecord(&master_record);
 						PackRecord(&master_record, nffile_w);
@@ -357,7 +359,7 @@ int	v1_map_done = 0;
 				case ExtensionMapType: {
 					extension_map_t *map = (extension_map_t *)flow_record;
 
-					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+					if ( Insert_Extension_Map(extension_map_list, map) ) {
 					 	// flush new map
 					} // else map already known and flushed
 					AppendToBuffer(nffile_w, (void *)map, map->size);
@@ -390,7 +392,7 @@ int	v1_map_done = 0;
 
 	LogError("\n");
 	LogError("Processed %i files.\n", --cnt);
-	PackExtensionMapList(&extension_map_list);
+	PackExtensionMapList(extension_map_list);
 
 } // End of process_data
 
@@ -448,12 +450,13 @@ char		CryptoPAnKey[32];
 		exit(255);
 	}
 
-	InitExtensionMaps(&extension_map_list);
+	extension_map_list = InitExtensionMaps(NEEDS_EXTENSION_LIST);
 
 	SetupInputFileSequence(Mdirs, rfile, Rfile);
 
 	process_data(wfile);
 
+	FreeExtensionMaps(extension_map_list);
 
 	return 0;
 }
