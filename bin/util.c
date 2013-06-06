@@ -63,6 +63,12 @@ extern char *CurrentIdent;
 
 enum { NONE, LESS, MORE };
 
+#ifndef DEVEL
+#   define dbg_printf(...) /* printf(__VA_ARGS__) */
+#else
+#   define dbg_printf(...) printf(__VA_ARGS__)
+#endif
+
 /* Function prototypes */
 static int check_number(char *s, int len);
 
@@ -160,6 +166,7 @@ char string[512];
 		vsnprintf(string, 511, format, var_args);
 		va_end(var_args);
 		syslog(LOG_ERR, "%s", string);
+		dbg_printf("%s\n", string);
 	} else {
 		va_start(var_args, format);
 		vfprintf(stderr, format, var_args);
@@ -177,6 +184,7 @@ char string[512];
 		vsnprintf(string, 511, format, var_args);
 		va_end(var_args);
 		syslog(LOG_INFO, "%s", string);
+		dbg_printf("%s\n", string);
 	} else {
 		va_start(var_args, format);
 		vfprintf(stderr, format, var_args);

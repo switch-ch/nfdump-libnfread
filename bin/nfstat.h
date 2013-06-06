@@ -87,6 +87,9 @@ typedef struct SortElement {
     uint64_t	count;
 } SortElement_t;
 
+#define MULTIPLE_LIST_ORDERS 1
+#define SINGLE_LIST_ORDER    0
+
 /* Function prototypes */
 void SetLimits(int stat, char *packet_limit_string, char *byte_limit_string );
 
@@ -96,17 +99,19 @@ void Dispose_StatTable(void);
 
 int SetStat(char *str, int *element_stat, int *flow_stat);
 
-int SetStat_DefaultOrder(char *order);
+int Parse_PrintOrder(char *order);
 
 void InsertFlow(common_record_t *raw_record, master_record_t *flow_record);
 
 void AddStat(common_record_t *raw_record, master_record_t *flow_record );
 
-void PrintFlowTable(printer_t print_record, uint32_t limitflows, int date_sorted, int tag, int GuessDir);
+void PrintFlowTable(printer_t print_record, uint32_t limitflows, int tag, int GuessDir);
 
 void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output);
 
 void PrintElementStat(stat_record_t	*sum_stat, char *record_header, printer_t print_record, int topN, int tag, int quiet, int pipe_output, int cvs_output);
+
+int ParseListOrder(char *s, int multiple_orders );
 
 void PrintSortedFlows(printer_t print_record, uint32_t limitflows, int tag);
 

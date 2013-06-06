@@ -395,6 +395,7 @@ srecord_t	*commbuff;
 	 * for proper cleanup 
 	 */
 	while ( 1 ) {
+		struct timeval tv;
 
 		/* read next bunch of data into beginn of input buffer */
 		if ( !done) {
@@ -427,7 +428,9 @@ srecord_t	*commbuff;
 		}
 
 		/* Periodic file renaming, if time limit reached or if we are done.  */
-		t_now = time(NULL);
+		gettimeofday(&tv, NULL);
+		t_now = tv.tv_sec;
+
 		if ( ((t_now - t_start) >= twin) || done ) {
 			char subfilename[64];
 			struct  tm *now;
@@ -495,6 +498,8 @@ srecord_t	*commbuff;
 					ResetBppHistogram(fs->xstat->bpp_histogram);
 				}
 
+				// Flush Exporter Stat to file
+				FlushExporterStats(fs);
 				// Write Stat record and close file
 				CloseUpdateFile(nffile, fs->Ident);
 
@@ -543,12 +548,12 @@ srecord_t	*commbuff;
 					}
 					/* XXX needs fixing */
 					if ( fs->xstat ) {
-						SetFlag(fs->nffile->file_header->flags, FLAG_EXTENDED_STATS);
+						// Add catalog entry
 					}
 				}
 
 				// Dump all extension maps to the buffer
-				FlushExtensionMaps(fs);
+				FlushStdRecords(fs);
 
 				// next flow source
 				fs = fs->next;
@@ -631,6 +636,7 @@ srecord_t	*commbuff;
 			fs->bad_packets++;
 			continue;
 		}
+		fs->received = tv;
 
 		/* Process data - have a look at the common header */
 		Process_sflow(in_buff, cnt, fs);
@@ -862,6 +868,7 @@ int	c;
 		}
 	}
 
+	InitExtensionMaps(NULL);
 	SetupExtensionDescriptors(strdup(extension_tags));
 
 	if ( FlowSource == NULL && datadir == NULL ) {

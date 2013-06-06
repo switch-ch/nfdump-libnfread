@@ -1,5 +1,4 @@
-/*
- *  Copyright (c) 2012, Peter Haag
+/*  Copyright (c) 2012, Peter Haag
  *  All rights reserved.
  *  
  *  Redistribution and use in source and binary forms, with or without 
@@ -60,6 +59,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "ipfix.h"
 
 #ifndef DEVEL
@@ -145,13 +145,11 @@ typedef struct input_translation_s {
 //	uint32_t	sampler_size;
 //	uint32_t	engine_offset;
 	uint32_t	router_ip_offset;
+	uint32_t	received_offset;
 
 	// etension map infos
 	uint32_t	extension_map_changed;	// map changed while refreshing?
 	extension_info_t 	 extension_info; // the extension map reflecting this template
-
-	// track packet sequence numbers
-	uint32_t		PacketSequence;
 
 	// sequence map information
 	uint32_t	number_of_sequences;	// number of sequences for the translate 
@@ -162,17 +160,24 @@ typedef struct input_translation_s {
  * 	All Obervation Domains from all exporter are stored in a linked list
  *	which uniquely can identify each exporter/Observation Domain
  */
-typedef struct exporter_domain_s {
-	struct exporter_domain_s	*next;	// linkes list to next exporter
+typedef struct exporter_ipfix_domain_s {
+	struct exporter_ipfix_domain_s	*next;	// linkes list to next exporter
 
-	// identifiers to uniquely idetify each exporter
-	uint32_t 	version;			// make sure it's a version 10 exporter 
-	uint32_t	ObservationDomain;	// The Observation Domain is unique per device
-	ip_addr_t	ip;					// IP address to identify the device
-	uint32_t	sa_family;			// v4/v6
+	// generic exporter information
+	exporter_info_record_t info;
+
+	uint64_t	packets;			// number of packets sent by this exporter
+	uint64_t	flows;				// number of flow records sent by this exporter
+	uint32_t	sequence_failure;	// number of sequence failues
+
+	// generic sampler
+	generic_sampler_t		*sampler;
 
 	// exporter parameters
 	uint32_t	ExportTime;
+
+	// Current sequence number
+	uint32_t	PacketSequence;
 
 	// statistics
 	uint64_t	TemplateRecords;	// stat counter
@@ -185,10 +190,7 @@ typedef struct exporter_domain_s {
 	// the last template we processed as a cache
 	input_translation_t *current_table;
 
-	// Current sequence number
-	uint32_t		PacketSequence;
-
-} exporter_domain_t;
+} exporter_ipfix_domain_t;
 
 
 static struct ipfix_element_map_s {
@@ -201,7 +203,13 @@ static struct ipfix_element_map_s {
 } ipfix_element_map[] = {
 	{0, 0, 0},
 	{ IPFIX_octetDeltaCount, 			 _8bytes, 	_8bytes,  move64_sampling, zero64, COMMON_BLOCK },
+	{ IPFIX_octetDeltaCount, 			 _4bytes, 	_8bytes,  move32_sampling, zero64, COMMON_BLOCK },
 	{ IPFIX_packetDeltaCount, 			 _8bytes, 	_8bytes,  move64_sampling, zero64, COMMON_BLOCK },
+	{ IPFIX_packetDeltaCount, 			 _4bytes, 	_8bytes,  move32_sampling, zero64, COMMON_BLOCK },
+	{ IPFIX_octetTotalCount, 			 _8bytes, 	_8bytes,  move64_sampling, zero64, COMMON_BLOCK },
+	{ IPFIX_octetTotalCount, 			 _4bytes, 	_8bytes,  move32_sampling, zero64, COMMON_BLOCK },
+	{ IPFIX_packetTotalCount, 			 _8bytes, 	_8bytes,  move64_sampling, zero64, COMMON_BLOCK },
+	{ IPFIX_packetTotalCount, 			 _4bytes, 	_8bytes,  move32_sampling, zero64, COMMON_BLOCK },
 	{ IPFIX_protocolIdentifier, 		 _1byte, 	_1byte,   move8,  zero8, COMMON_BLOCK },
 	{ IPFIX_ipClassOfService, 			 _1byte, 	_1byte,   move8, zero8, COMMON_BLOCK },
 	{ IPFIX_tcpControlBits, 			 _1byte, 	_1byte,   move8, zero8, COMMON_BLOCK },
@@ -209,18 +217,24 @@ static struct ipfix_element_map_s {
 	{ IPFIX_SourceIPv4Address, 			 _4bytes, 	_4bytes,  move32, zero32, COMMON_BLOCK },
 	{ IPFIX_SourceIPv4PrefixLength, 	 _1byte, 	_1byte,   move8, zero8, EX_MULIPLE },
 	{ IPFIX_ingressInterface, 			 _4bytes, 	_4bytes,  move32, zero32, EX_IO_SNMP_4 },
+	{ IPFIX_ingressInterface, 			 _2bytes, 	_2bytes,  move16, zero16, EX_IO_SNMP_2 },
 	{ IPFIX_DestinationTransportPort,	 _2bytes, 	_2bytes,  move16, zero16, COMMON_BLOCK },
 	{ IPFIX_DestinationIPv4Address, 	 _4bytes, 	_4bytes,  move32, zero32, COMMON_BLOCK },
 	{ IPFIX_DestinationIPv4PrefixLength, _1byte, 	_1byte,   move8, zero8, EX_MULIPLE },
 	{ IPFIX_egressInterface, 			 _4bytes, 	_4bytes,  move32, zero32, EX_IO_SNMP_4 },
+	{ IPFIX_egressInterface, 			 _2bytes, 	_2bytes,  move16, zero16, EX_IO_SNMP_2 },
 	{ IPFIX_ipNextHopIPv4Address, 		 _4bytes, 	_4bytes,  move32, zero32, EX_NEXT_HOP_v4 },
 	{ IPFIX_bgpSourceAsNumber, 			 _4bytes, 	_4bytes,  move32, zero32, EX_AS_4 },
+	{ IPFIX_bgpSourceAsNumber, 			 _2bytes, 	_2bytes,  move16, zero16, EX_AS_2 },
 	{ IPFIX_bgpDestinationAsNumber, 	 _4bytes, 	_4bytes,  move32, zero32, EX_AS_4 },
+	{ IPFIX_bgpDestinationAsNumber, 	 _2bytes, 	_2bytes,  move16, zero16, EX_AS_2 },
 	{ IPFIX_bgpNextHopIPv4Address, 		 _4bytes, 	_4bytes,  move32, zero32, EX_NEXT_HOP_BGP_v4},
-	{ IPFIX_flowEndSysUpTime, 			 _8bytes, 	_8bytes,  nop, nop,  COMMON_BLOCK },
+	{ IPFIX_flowEndSysUpTime, 			 _4bytes, 	_4bytes,  nop, nop,  COMMON_BLOCK },
 	{ IPFIX_flowStartSysUpTime, 		 _4bytes, 	_4bytes,  nop, nop, COMMON_BLOCK },
 	{ IPFIX_postOctetDeltaCount, 		 _8bytes, 	_8bytes,  move64, zero64, EX_OUT_BYTES_8 },
+	{ IPFIX_postOctetDeltaCount, 		 _4bytes, 	_4bytes,  move32, zero32, EX_OUT_BYTES_4 },
 	{ IPFIX_postPacketDeltaCount, 		 _8bytes, 	_8bytes,  move64, zero64, EX_OUT_PKG_8 },
+	{ IPFIX_postPacketDeltaCount, 		 _4bytes, 	_4bytes,  move32, zero32, EX_OUT_PKG_4 },
 	{ IPFIX_SourceIPv6Address, 			 _16bytes, 	_16bytes, move128, zero128, COMMON_BLOCK },
 	{ IPFIX_DestinationIPv6Address, 	 _16bytes, 	_16bytes, move128, zero128, COMMON_BLOCK },
 	{ IPFIX_SourceIPv6PrefixLength, 	 _1byte, 	_1byte,   move8, zero8, EX_MULIPLE },
@@ -273,25 +287,26 @@ extern int verbose;
 extern uint32_t Max_num_extensions;
 extern extension_descriptor_t extension_descriptor[];
 extern uint32_t overwrite_sampling;
+extern uint32_t	exporter_sysid;
 
 // prototypes
-static input_translation_t *add_translation_table(exporter_domain_t *exporter, uint16_t id);
+static input_translation_t *add_translation_table(exporter_ipfix_domain_t *exporter, uint16_t id);
 
-static void remove_translation_table(exporter_domain_t *exporter, uint16_t id);
+static void remove_translation_table(exporter_ipfix_domain_t *exporter, uint16_t id);
 
-static void remove_all_translation_tables(exporter_domain_t *exporter);
+static void remove_all_translation_tables(exporter_ipfix_domain_t *exporter);
 
-static inline exporter_domain_t *GetExporter(FlowSource_t *fs, ipfix_header_t *ipfix_header);
+static inline exporter_ipfix_domain_t *GetExporter(FlowSource_t *fs, ipfix_header_t *ipfix_header);
 
 static inline uint32_t MapElement(uint16_t Type, uint16_t Length, uint16_t Offset);
 
 static inline void PushSequence(input_translation_t *table, uint16_t Type, uint32_t *offset, void *stack);
 
-static inline void Process_ipfix_templates(exporter_domain_t *exporter, void *flowset_header, uint32_t size_left, FlowSource_t *fs);
+static inline void Process_ipfix_templates(exporter_ipfix_domain_t *exporter, void *flowset_header, uint32_t size_left, FlowSource_t *fs);
 
-static inline void Process_ipfix_template_add(exporter_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs);
+static inline void Process_ipfix_template_add(exporter_ipfix_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs);
 
-static inline void Process_ipfix_template_withdraw(exporter_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs);
+static inline void Process_ipfix_template_withdraw(exporter_ipfix_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs);
 
 
 #include "inline.c"
@@ -310,23 +325,28 @@ int i;
 	// init the helper element table
 	for (i=1; ipfix_element_map[i].id != 0; i++ ) {
 		uint32_t Type = ipfix_element_map[i].id;
-		cache.lookup_info[Type].index  = i;
+		// multiple same type - save first index only
+		// iterate through same Types afterwards
+		if ( cache.lookup_info[Type].index == 0 ) 
+			cache.lookup_info[Type].index  = i;
 	}
 	cache.max_ipfix_elements = i;
+
+	syslog(LOG_DEBUG,"Init IPFIX: Max number of IPFIX tags: %u", cache.max_ipfix_elements);
 
 	return 1;
 
 } // End of Init_IPFIX
 
-static inline exporter_domain_t *GetExporter(FlowSource_t *fs, ipfix_header_t *ipfix_header) {
+static inline exporter_ipfix_domain_t *GetExporter(FlowSource_t *fs, ipfix_header_t *ipfix_header) {
 #define IP_STRING_LEN   40
 char ipstr[IP_STRING_LEN];
-exporter_domain_t **e = (exporter_domain_t **)&(fs->exporter_data);
+exporter_ipfix_domain_t **e = (exporter_ipfix_domain_t **)&(fs->exporter_data);
 uint32_t ObservationDomain = ntohl(ipfix_header->ObservationDomain);
 
 	while ( *e ) {
-		if ( (*e)->ObservationDomain == ObservationDomain && (*e)->version == 10 && 
-			 (*e)->ip.v6[0] == fs->ip.v6[0] && (*e)->ip.v6[1] == fs->ip.v6[1]) 
+		if ( (*e)->info.id == ObservationDomain && (*e)->info.version == 10 && 
+			 (*e)->info.ip.v6[0] == fs->ip.v6[0] && (*e)->info.ip.v6[1] == fs->ip.v6[1]) 
 			return *e;
 		e = &((*e)->next);
 	}
@@ -343,24 +363,35 @@ uint32_t ObservationDomain = ntohl(ipfix_header->ObservationDomain);
 		strncpy(ipstr, "<unknown>", IP_STRING_LEN);
 	}
 
-	dbg_printf("Process_ipfix: New observation domain %u from: %s\n", ObservationDomain, ipstr);
-	syslog(LOG_INFO, "Process_ipfix: New observation domain %u from: %s\n", ObservationDomain, ipstr);
-
 	// nothing found
-	*e = (exporter_domain_t *)malloc(sizeof(exporter_domain_t));
+	*e = (exporter_ipfix_domain_t *)malloc(sizeof(exporter_ipfix_domain_t));
 	if ( !(*e)) {
 		syslog(LOG_ERR, "Process_ipfix: Panic! malloc() %s line %d: %s", __FILE__, __LINE__, strerror (errno));
 		return NULL;
 	}
-	memset((void *)(*e), 0, sizeof(exporter_domain_t));
-	(*e)->ObservationDomain = ObservationDomain;
-	(*e)->ip.v6[0]			= fs->ip.v6[0];
-	(*e)->ip.v6[1]			= fs->ip.v6[1];
-	(*e)->sa_family			= fs->sa_family;
-	(*e)->version 			= 10;
+	memset((void *)(*e), 0, sizeof(exporter_ipfix_domain_t));
+	(*e)->info.header.type  = ExporterInfoRecordType;
+	(*e)->info.header.size  = sizeof(exporter_info_record_t);
+	(*e)->info.id 			= ObservationDomain;
+	(*e)->info.ip			= fs->ip;
+	(*e)->info.sa_family	= fs->sa_family;
+	(*e)->info.version 		= 10;
+	(*e)->info.sysid	 	= 0;
+
 	(*e)->TemplateRecords 	= 0;
 	(*e)->DataRecords 	 	= 0;
+	(*e)->sequence_failure 	= 0;
 	(*e)->next	 			= NULL;
+	(*e)->sampler 			= NULL;
+
+	FlushInfoExporter(fs, &((*e)->info));
+
+	dbg_printf("[%u] New exporter: SysID: %u, Observation domain %u from: %s\n", 
+		ObservationDomain, (*e)->info.sysid, ObservationDomain, ipstr);
+	syslog(LOG_INFO, "Process_ipfix: New exporter: SysID: %u, Observation domain %u from: %s\n", 
+		(*e)->info.sysid, ObservationDomain, ipstr);
+
+
 	return (*e);
 
 } // End of GetExporter
@@ -369,24 +400,28 @@ static inline uint32_t MapElement(uint16_t Type, uint16_t Length, uint16_t Offse
 int	index;
 
 	index = cache.lookup_info[Type].index;
-	if ( index && Length == ipfix_element_map[index].length ) {
-		cache.lookup_info[Type].found  = 1;
-		cache.lookup_info[Type].offset = Offset;
-		cache.lookup_info[Type].length = Length;
-		dbg_printf("found extension %u for type: %u, input length: %u output length: %u Extension: %u\n", 
-			ipfix_element_map[index].extension, ipfix_element_map[index].id, 
-			ipfix_element_map[index].length, ipfix_element_map[index].out_length, ipfix_element_map[index].extension);
-		return ipfix_element_map[index].extension;
+	if ( index ) {
+		while ( index && ipfix_element_map[index].id == Type ) {
+			if ( Length == ipfix_element_map[index].length ) {
+				cache.lookup_info[Type].found  = 1;
+				cache.lookup_info[Type].offset = Offset;
+				cache.lookup_info[Type].length = Length;
+				cache.lookup_info[Type].index  = index;
+				dbg_printf("found extension %u for type: %u, input length: %u output length: %u Extension: %u\n", 
+					ipfix_element_map[index].extension, ipfix_element_map[index].id, 
+					ipfix_element_map[index].length, ipfix_element_map[index].out_length, ipfix_element_map[index].extension);
+				return ipfix_element_map[index].extension;
+			}
+			index++;
+		}
 	}
-
-	dbg_printf("Skip unknown element type: %u, Length: %u\n", 
-		Type, Length);
+	dbg_printf("Skip unknown element type: %u, Length: %u\n", Type, Length);
 
 	return 0;
 
 } // End of MapElement
 
-static inline input_translation_t *GetTranslationTable(exporter_domain_t *exporter, uint16_t id) {
+static inline input_translation_t *GetTranslationTable(exporter_ipfix_domain_t *exporter, uint16_t id) {
 input_translation_t *table;
 
 	if ( exporter->current_table && ( exporter->current_table->id == id ) )
@@ -402,14 +437,14 @@ input_translation_t *table;
 		table = table->next;
 	}
 
-	dbg_printf("[%u] Get translation table %u: %s\n", exporter->ObservationDomain, id, table == NULL ? "not found" : "found");
+	dbg_printf("[%u] Get translation table %u: %s\n", exporter->info.id, id, table == NULL ? "not found" : "found");
 
 	exporter->current_table = table;
 	return table;
 
 } // End of GetTranslationTable
 
-static input_translation_t *add_translation_table(exporter_domain_t *exporter, uint16_t id) {
+static input_translation_t *add_translation_table(exporter_ipfix_domain_t *exporter, uint16_t id) {
 input_translation_t **table;
 
 	table = &(exporter->input_translation_table);
@@ -432,19 +467,18 @@ input_translation_t **table;
 
 	(*table)->id   = id;
 	(*table)->next = NULL;
-	(*table)->PacketSequence = exporter->PacketSequence;
 
-	dbg_printf("[%u] Get new translation table %u\n", exporter->ObservationDomain, id);
+	dbg_printf("[%u] Get new translation table %u\n", exporter->info.id, id);
 
 	return *table;
 
 } // End of add_translation_table
 
-static void remove_translation_table(exporter_domain_t *exporter, uint16_t id) {
+static void remove_translation_table(exporter_ipfix_domain_t *exporter, uint16_t id) {
 input_translation_t *table, *parent;
 
 	syslog(LOG_INFO, "Process_ipfix: [%u] Withdraw template id: %i", 
-			exporter->ObservationDomain, id);
+			exporter->info.id, id);
 
 	parent = NULL;
 	table = exporter->input_translation_table;
@@ -455,11 +489,11 @@ input_translation_t *table, *parent;
 
 	if ( table == NULL ) {
 		syslog(LOG_ERR, "Process_ipfix: [%u] Withdraw template id: %i. translation table not found", 
-				exporter->ObservationDomain, id);
+				exporter->info.id, id);
 		return;
 	}
 
-	dbg_printf("\n[%u] Withdraw template ID: %u\n", exporter->ObservationDomain, table->id);
+	dbg_printf("\n[%u] Withdraw template ID: %u\n", exporter->info.id, table->id);
 
 	if ( parent ) {
 		// remove table from list
@@ -475,17 +509,17 @@ input_translation_t *table, *parent;
 
 } // End of remove_translation_table
 
-static void remove_all_translation_tables(exporter_domain_t *exporter) {
+static void remove_all_translation_tables(exporter_ipfix_domain_t *exporter) {
 input_translation_t *table, *next;
 
 	syslog(LOG_INFO, "Process_ipfix: Withdraw all templates from observation domain %u\n", 
-		exporter->ObservationDomain);
+		exporter->info.id);
 
 	table = exporter->input_translation_table;
 	while ( table ) {
 		next = table->next;
 
-		dbg_printf("\n[%u] Withdraw template ID: %u\n", exporter->ObservationDomain, table->id);
+		dbg_printf("\n[%u] Withdraw template ID: %u\n", exporter->info.id, table->id);
 
 		free(table->sequence);
 		free(table->extension_info.map);
@@ -527,7 +561,7 @@ uint32_t index = cache.lookup_info[Type].index;
 
 } // End of PushSequence
 
-static input_translation_t *setup_translation_table (exporter_domain_t *exporter, uint16_t id, uint16_t input_record_size) {
+static input_translation_t *setup_translation_table (exporter_ipfix_domain_t *exporter, uint16_t id, uint16_t input_record_size) {
 input_translation_t *table;
 extension_map_t 	*extension_map;
 uint32_t			i, ipv6, offset, next_extension;
@@ -537,7 +571,7 @@ size_t				size_required;
 
 	table = GetTranslationTable(exporter, id);
 	if ( !table ) {
-		syslog(LOG_INFO, "Process_ipfix: [%u] Add template %u", exporter->ObservationDomain, id);
+		syslog(LOG_INFO, "Process_ipfix: [%u] Add template %u", exporter->info.id, id);
 		table = add_translation_table(exporter, id);
 		if ( !table ) {
 			return NULL;
@@ -570,10 +604,10 @@ size_t				size_required;
 		extension_map->size 	   	  = sizeof(extension_map_t);
 		extension_map->extension_size = 0;
 
-		dbg_printf("[%u] Refresh template %u\n", exporter->ObservationDomain, id);
+		dbg_printf("[%u] Refresh template %u\n", exporter->info.id, id);
 
 		// very noisy with somee exporters
-		// syslog(LOG_DEBUG, "Process_ipfix: [%u] Refresh template %u", exporter->ObservationDomain, id);
+		// syslog(LOG_DEBUG, "Process_ipfix: [%u] Refresh template %u", exporter->info.id, id);
 	}
 	// clear current table
 	memset((void *)table->sequence, 0, cache.max_ipfix_elements * sizeof(sequence_map_t));
@@ -588,8 +622,9 @@ size_t				size_required;
 //	table->sampler_size		= 0;
 //	table->engine_offset 	= 0;
 	table->router_ip_offset = 0;
+	table->received_offset  = 0;
 
-	dbg_printf("[%u] Build sequence table %u\n", exporter->ObservationDomain, id);
+	dbg_printf("[%u] Build sequence table %u\n", exporter->info.id, id);
 
 	// fill table
 	table->id 			= id;
@@ -636,24 +671,40 @@ size_t				size_required;
 		PushSequence( table, IPFIX_DestinationIPv4Address, &offset, NULL);
 	}
 
-	PushSequence( table, IPFIX_packetDeltaCount, &offset, &table->packets);
+	// decide between Delta or Total  counters - prefer Total if available
+	if ( cache.lookup_info[IPFIX_packetTotalCount].found )
+		PushSequence( table, IPFIX_packetTotalCount, &offset, &table->packets);
+	else
+		PushSequence( table, IPFIX_packetDeltaCount, &offset, &table->packets);
 	SetFlag(table->flags, FLAG_PKG_64);
-	PushSequence( table, IPFIX_octetDeltaCount, &offset, &table->bytes);
+
+	if ( cache.lookup_info[IPFIX_octetTotalCount].found )
+		PushSequence( table, IPFIX_octetTotalCount, &offset, &table->bytes);
+	else
+		PushSequence( table, IPFIX_octetDeltaCount, &offset, &table->bytes);
 	SetFlag(table->flags, FLAG_BYTES_64);
 
 
 	// Optional extensions
 	next_extension = 0;
-	for (i=4; i <= Max_num_extensions; i++ ) {
+	for (i=4; extension_descriptor[i].id; i++ ) {
 		uint32_t map_index = i;
 
 		if ( cache.common_extensions[i] == 0 )
 			continue;
 
 		switch(i) {
+			case EX_IO_SNMP_2:
+				PushSequence( table, IPFIX_ingressInterface, &offset, NULL);
+				PushSequence( table, IPFIX_egressInterface, &offset, NULL);
+				break;
 			case EX_IO_SNMP_4:
 				PushSequence( table, IPFIX_ingressInterface, &offset, NULL);
 				PushSequence( table, IPFIX_egressInterface, &offset, NULL);
+				break;
+			case EX_AS_2:
+				PushSequence( table, IPFIX_bgpSourceAsNumber, &offset, NULL);
+				PushSequence( table, IPFIX_bgpDestinationAsNumber, &offset, NULL);
 				break;
 			case EX_AS_4:
 				PushSequence( table, IPFIX_bgpSourceAsNumber, &offset, NULL);
@@ -690,8 +741,14 @@ size_t				size_required;
 				PushSequence( table, IPFIX_vlanId, &offset, NULL);
 				PushSequence( table, IPFIX_postVlanId, &offset, NULL);
 				break;
+			case EX_OUT_PKG_4:
+				PushSequence( table, IPFIX_postPacketDeltaCount, &offset, NULL);
+				break;
 			case EX_OUT_PKG_8:
 				PushSequence( table, IPFIX_postPacketDeltaCount, &offset, NULL);
+				break;
+			case EX_OUT_BYTES_4:
+				PushSequence( table, IPFIX_postOctetDeltaCount, &offset, NULL);
 				break;
 			case EX_OUT_BYTES_8:
 				PushSequence( table, IPFIX_postOctetDeltaCount, &offset, NULL);
@@ -720,7 +777,7 @@ size_t				size_required;
 				break;
 			case EX_ROUTER_IP_v4:
 			case EX_ROUTER_IP_v6:
-				if ( exporter->sa_family == PF_INET6 ) {
+				if ( exporter->info.sa_family == PF_INET6 ) {
 					table->router_ip_offset = offset;
 					dbg_printf("Router IPv6: offset: %u, olen: %u\n", offset, 16 );
 					// not an entry for the translateion table.
@@ -741,6 +798,12 @@ size_t				size_required;
 			case EX_ROUTER_ID:
 				// no value in ipfix 
 				break;
+			case EX_RECEIVED:
+				table->received_offset = offset;
+				dbg_printf("Received offset: %u\n", offset);
+				offset				   += 8;
+				break;
+
 		}
 		extension_map->size += sizeof(uint16_t);
 		extension_map->extension_size += extension_descriptor[map_index].size;
@@ -777,7 +840,7 @@ size_t				size_required;
 	if ( table->extension_map_changed ) {
 		printf("Extension Map id=%u changed!\n", extension_map->map_id);
 	} else {
-		printf("[%u] template %u unchanged\n", exporter->ObservationDomain, id);
+		printf("[%u] template %u unchanged\n", exporter->info.id, id);
 	}
 
 	printf("Process_ipfix: Check extension map: id: %d, size: %u, extension_size: %u\n", 
@@ -799,7 +862,7 @@ size_t				size_required;
 
 } // End of setup_translation_table
 
-static inline void Process_ipfix_templates(exporter_domain_t *exporter, void *flowset_header, uint32_t size_left, FlowSource_t *fs) {
+static inline void Process_ipfix_templates(exporter_ipfix_domain_t *exporter, void *flowset_header, uint32_t size_left, FlowSource_t *fs) {
 ipfix_template_record_t *ipfix_template_record;
 void *DataPtr;
 uint32_t id, count;
@@ -822,7 +885,7 @@ uint32_t id, count;
 
 } // End of Process_ipfix_templates
 
-static inline void Process_ipfix_template_add(exporter_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs) {
+static inline void Process_ipfix_template_add(exporter_ipfix_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs) {
 input_translation_t *translation_table;
 ipfix_template_record_t *ipfix_template_record;
 ipfix_template_elements_std_t *NextElement;
@@ -833,6 +896,9 @@ uint16_t Offset = 0;
 	memset((void *)cache.common_extensions, 0,  (Max_num_extensions+1)*sizeof(uint32_t));
 	for (i=1; ipfix_element_map[i].id != 0; i++ ) {
 		uint32_t Type = ipfix_element_map[i].id;
+		if ( ipfix_element_map[i].id == ipfix_element_map[i-1].id )
+			continue;
+		cache.lookup_info[Type].index   = i;
 		cache.lookup_info[Type].found   = 0;
 		cache.lookup_info[Type].offset  = 0;
 		cache.lookup_info[Type].length  = 0;
@@ -850,7 +916,7 @@ uint16_t Offset = 0;
 		id 	  = ntohs(ipfix_template_record->TemplateID);
 		count = ntohs(ipfix_template_record->FieldCount);
 
-		dbg_printf("\n[%u] Template ID: %u\n", exporter->ObservationDomain, id);
+		dbg_printf("\n[%u] Template ID: %u\n", exporter->info.id, id);
 		dbg_printf("FieldCount: %u buffersize: %u\n", count, size_left);
 
 		// assume all elements in template are std elements. correct this value, if we find an enterprise element
@@ -858,7 +924,7 @@ uint16_t Offset = 0;
 		if ( size_left < size_required ) {
 			// if we fail this check, this flowset must be skipped.
 			syslog(LOG_ERR, "Process_ipfix: [%u] Not enough data for template elements! required: %i, left: %u", 
-					exporter->ObservationDomain, size_required, size_left);
+					exporter->info.id, size_required, size_left);
 			dbg_printf("ERROR: Not enough data for template elements! required: %i, left: %u", size_required, size_left);
 			return;
 		}
@@ -892,7 +958,7 @@ uint16_t Offset = 0;
 				size_required += 4;	// ad 4 for enterprise value
 				if ( size_left < size_required ) {
 					syslog(LOG_ERR, "Process_ipfix: [%u] Not enough data for template elements! required: %i, left: %u", 
-							exporter->ObservationDomain, size_required, size_left);
+							exporter->info.id, size_required, size_left);
 					dbg_printf("ERROR: Not enough data for template elements! required: %i, left: %u", size_required, size_left);
 					return;
 				}
@@ -916,7 +982,11 @@ uint16_t Offset = 0;
 			dbg_printf("Add sending router IP address (%s) => Extension: %u\n", 
 				fs->sa_family == PF_INET6 ? "ipv6" : "ipv4", EX_ROUTER_IP_v4);
 		}
-	
+
+		// XXX for now, we do not stre router ID in IPFIX
+		extension_descriptor[EX_ROUTER_ID].enabled = 0;
+
+/*	
 		// as the router IP address extension is not part announced in a template, we need to deal with it here
 		if ( extension_descriptor[EX_ROUTER_ID].enabled ) {
 			if ( cache.common_extensions[EX_ROUTER_ID] == 0 ) {
@@ -925,11 +995,20 @@ uint16_t Offset = 0;
 			}
 			dbg_printf("Force add router ID (engine type/ID), Extension: %u\n", EX_ROUTER_ID);
 		}
+*/
+		// as the received time is not announced in a template, we need to deal with it here
+		if ( extension_descriptor[EX_RECEIVED].enabled ) {
+			if ( cache.common_extensions[EX_RECEIVED] == 0 ) {
+				cache.common_extensions[EX_RECEIVED] = 1;
+				num_extensions++;
+			}
+			dbg_printf("Force add packet received time, Extension: %u\n", EX_RECEIVED);
+		}
 
 #ifdef DEVEL
 		{
 			int i;
-			for (i=0; i<Max_num_extensions; i++ ) {
+			for (i=4; extension_descriptor[i].id; i++ ) {
 				if ( cache.common_extensions[i] ) {
 					printf("Enabled extension: %i\n", i);
 				}
@@ -958,7 +1037,7 @@ uint16_t Offset = 0;
 
 } // End of Process_ipfix_template_add
 
-static inline void Process_ipfix_template_withdraw(exporter_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs) {
+static inline void Process_ipfix_template_withdraw(exporter_ipfix_domain_t *exporter, void *DataPtr, uint32_t size_left, FlowSource_t *fs) {
 ipfix_template_record_t *ipfix_template_record;
 
 	// a template flowset can contain multiple records ( templates )
@@ -989,9 +1068,10 @@ ipfix_template_record_t *ipfix_template_record;
  
 } // End of Process_ipfix_template_withdraw
 
-static inline void Process_ipfix_option_templates(exporter_domain_t *exporter, void *option_template_flowset, FlowSource_t *fs) {
-void		*DataPtr, *p;
-uint32_t	size_left, size_required, nr_scopes, nr_options, i;
+static inline void Process_ipfix_option_templates(exporter_ipfix_domain_t *exporter, void *option_template_flowset, FlowSource_t *fs) {
+void		*DataPtr;
+uint32_t	size_left, size_required, i;
+// uint32_t nr_scopes, nr_options;
 uint16_t	id, field_count, scope_field_count, offset, sampler_id_length;
 uint16_t	offset_sampler_id, offset_sampler_mode, offset_sampler_interval, found_sampler;
 uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sampling;
@@ -1000,7 +1080,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 	size_left 		  = GET_FLOWSET_LENGTH(option_template_flowset) - 4; // -4 for flowset header -> id and length
 	if ( size_left < 6 ) {
 		syslog(LOG_ERR, "Process_ipfix: [%u] option template length error: size left %u too small for an options template", 
-			exporter->ObservationDomain, size_left);
+			exporter->info.id, size_left);
 		return;
 	}
 
@@ -1013,7 +1093,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 
 	if ( scope_field_count == 0  ) {
 		syslog(LOG_ERR, "Process_ipfx: [%u] scope field count error: length must not be zero", 
-			exporter->ObservationDomain);
+			exporter->info.id);
 		dbg_printf("scope field count error: length must not be zero\n");
 		return;
 	}
@@ -1022,7 +1102,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 	dbg_printf("Size left: %u, size required: %u\n", size_left, size_required);
 	if ( size_left < size_required ) {
 		syslog(LOG_ERR, "Process_ipfix: [%u] option template length error: size left %u too small for %u scopes length and %u options length", 
-			exporter->ObservationDomain, size_left, field_count, scope_field_count);
+			exporter->info.id, size_left, field_count, scope_field_count);
 		dbg_printf("option template length error: size left %u too small for field_count %u\n", 
 			size_left, field_count);
 		return;
@@ -1033,7 +1113,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 
 	if ( scope_field_count == 0  ) {
 		syslog(LOG_ERR, "Process_ipfxi: [%u] scope field count error: length must not be zero", 
-			exporter->ObservationDomain);
+			exporter->info.id);
 		return;
 	}
 
@@ -1050,7 +1130,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 			dbg_printf("Adjusted: Size left: %u, size required: %u\n", size_left, size_required);
 			if ( size_left < size_required ) {
 				syslog(LOG_ERR, "Process_ipfix: [%u] option template length error: size left %u too small for %u scopes length and %u options length", 
-					exporter->ObservationDomain, size_left, field_count, scope_field_count);
+					exporter->info.id, size_left, field_count, scope_field_count);
 				dbg_printf("option template length error: size left %u too small for field_count %u\n", 
 					size_left, field_count);
 				return;
@@ -1076,7 +1156,7 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 			dbg_printf("Adjusted: Size left: %u, size required: %u\n", size_left, size_required);
 			if ( size_left < size_required ) {
 				syslog(LOG_ERR, "Process_ipfix: [%u] option template length error: size left %u too small for %u scopes length and %u options length", 
-					exporter->ObservationDomain, size_left, field_count, scope_field_count);
+					exporter->info.id, size_left, field_count, scope_field_count);
 				dbg_printf("option template length error: size left %u too small for field_count %u\n", 
 					size_left, field_count);
 				return;
@@ -1100,7 +1180,8 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 	found_std_sampling			 = 0;
 	offset = 0;
 
-/*
+/* XXX
+   XXX Sampling for IPFIX not yet implemented due to lack of data and information
 		switch (type) {
 			// general sampling
 			case NF9_SAMPLING_INTERVAL:
@@ -1128,23 +1209,23 @@ uint16_t	offset_std_sampler_interval, offset_std_sampler_algorithm, found_std_sa
 				break;
 		}
 		offset += length;
-*/
 	if ( found_sampler == 3 ) { // need all three tags
-		dbg_printf("[%u] Sampling information found\n", exporter->ObservationDomain);
+		dbg_printf("[%u] Sampling information found\n", exporter->info.id);
 		InsertSamplerOffset(fs, id, offset_sampler_id, sampler_id_length, offset_sampler_mode, offset_sampler_interval);
 	} else if ( found_std_sampling == 2 ) { // need all two tags
-		dbg_printf("[%u] Std sampling information found\n", exporter->ObservationDomain);
+		dbg_printf("[%u] Std sampling information found\n", exporter->info.id);
 		InsertStdSamplerOffset(fs, id, offset_std_sampler_interval, offset_std_sampler_algorithm);
 	} else {
-		dbg_printf("[%u] No Sampling information found\n", exporter->ObservationDomain);
+		dbg_printf("[%u] No Sampling information found\n", exporter->info.id);
 	}
+*/
 	dbg_printf("\n");
 	processed_records++;
 
 } // End of Process_ipfix_option_templates
 
 
-static inline void Process_ipfix_data(exporter_domain_t *exporter, void *data_flowset, FlowSource_t *fs, input_translation_t *table ){
+static inline void Process_ipfix_data(exporter_ipfix_domain_t *exporter, void *data_flowset, FlowSource_t *fs, input_translation_t *table ){
 uint64_t			sampling_rate;
 uint32_t			size_left;
 uint8_t				*in, *out;
@@ -1156,25 +1237,7 @@ char				*string;
 	// map input buffer as a byte array
 	in  	  = (uint8_t *)(data_flowset + 4);	// skip flowset header
 
-	dbg_printf("[%u] Process data flowset size: %u\n", exporter->ObservationDomain, size_left);
-
-	// sequence check
-	// 2^32 wrap is handled automatically as both counters overflow
-	if ( table->PacketSequence != exporter->PacketSequence ) {
-		if ( exporter->DataRecords != 0 ) {
-			// sync sequence on first data record without error report
-			fs->nffile->stat_record->sequence_failure++;
-			dbg_printf("[%u] Sequence check failed: last seq: %u, seq %u\n", 
-				exporter->ObservationDomain, table->PacketSequence, exporter->PacketSequence);
-			/* maybee to noise onbuggy exporters
-			syslog(LOG_ERR, "Process_ipfix [%u] Sequence error: last seq: %u, seq %u\n", 
-				ObservationDomain, exporter->LastSequence, Sequence);
-			*/
-		}
-		table->PacketSequence = exporter->PacketSequence;
-	} else {
-		dbg_printf("[%u] Sequence check ok\n", exporter->ObservationDomain);
-	}
+	dbg_printf("[%u] Process data flowset size: %u\n", exporter->info.id, size_left);
 
 
 	// Check if sampling is announced
@@ -1189,26 +1252,26 @@ char				*string;
 		}
 		if ( fs->sampler[sampler_id] ) {
 			sampling_rate = fs->sampler[sampler_id]->interval;
-			dbg_printf("[%u] Sampling ID %u available\n", exporter->ObservationDomain, sampler_id);
-			dbg_printf("[%u] Sampler_offset : %u\n", exporter->ObservationDomain, table->sampler_offset);
-			dbg_printf("[%u] Sampler Data : %s\n", exporter->ObservationDomain, fs->sampler == NULL ? "not available" : "available");
-			dbg_printf("[%u] Sampling rate: %llu\n", exporter->ObservationDomain, (long long unsigned)sampling_rate);
+			dbg_printf("[%u] Sampling ID %u available\n", exporter->info.id, sampler_id);
+			dbg_printf("[%u] Sampler_offset : %u\n", exporter->info.id, table->sampler_offset);
+			dbg_printf("[%u] Sampler Data : %s\n", exporter->info.id, fs->sampler == NULL ? "not available" : "available");
+			dbg_printf("[%u] Sampling rate: %llu\n", exporter->info.id, (long long unsigned)sampling_rate);
 		} else {
 			sampling_rate = default_sampling;
-			dbg_printf("[%u] Sampling ID %u not (yet) available\n", exporter->ObservationDomain, sampler_id);
+			dbg_printf("[%u] Sampling ID %u not (yet) available\n", exporter->info.id, sampler_id);
 		}
 
 	} else if ( fs->std_sampling.interval > 0 ) {
 		sampling_rate = fs->std_sampling.interval;
-		dbg_printf("[%u] Std sampling available for this flow source: Rate: %llu\n", exporter->ObservationDomain, (long long unsigned)sampling_rate);
+		dbg_printf("[%u] Std sampling available for this flow source: Rate: %llu\n", exporter->info.id, (long long unsigned)sampling_rate);
 	} else {
 		sampling_rate = default_sampling;
-		dbg_printf("[%u] No Sampling record found\n", exporter->ObservationDomain);
+		dbg_printf("[%u] No Sampling record found\n", exporter->info.id);
 	}
 ### */
 	if ( overwrite_sampling > 0 )  {
 		sampling_rate = overwrite_sampling;
-		dbg_printf("[%u] Hard overwrite sampling rate: %llu\n", exporter->ObservationDomain, (long long unsigned)sampling_rate);
+		dbg_printf("[%u] Hard overwrite sampling rate: %llu\n", exporter->info.id, (long long unsigned)sampling_rate);
 	} 
 
 	if ( sampling_rate != 1 )
@@ -1235,7 +1298,7 @@ char				*string;
 			return;
 		}
 		processed_records++;
-		table->PacketSequence++;
+		exporter->PacketSequence++;
 
 		// map file record to output buffer
 		data_record	= (common_record_t *)fs->nffile->buff_ptr;
@@ -1243,20 +1306,20 @@ char				*string;
 		out 	  = (uint8_t *)data_record;
 
 		dbg_printf("[%u] Process data record: %u addr: %llu, in record size: %u, buffer size_left: %u\n", 
-			exporter->ObservationDomain, processed_records, (long long unsigned)((ptrdiff_t)in - (ptrdiff_t)data_flowset), 
+			exporter->info.id, processed_records, (long long unsigned)((ptrdiff_t)in - (ptrdiff_t)data_flowset), 
 			table->input_record_size, size_left);
 
 		// fill the data record
-		data_record->flags 		  = table->flags;
-		data_record->size  		  = table->output_record_size;
-		data_record->type  		  = CommonRecordType;
-	  	data_record->ext_map	  = table->extension_info.map->map_id;
-		data_record->exporter_ref = 0;
+		data_record->flags 		    = table->flags;
+		data_record->size  		    = table->output_record_size;
+		data_record->type  		    = CommonRecordType;
+	  	data_record->ext_map	    = table->extension_info.map->map_id;
+		data_record->exporter_sysid = exporter->info.sysid;
 
-		table->flow_start 		  = 0;
-		table->flow_end 		  = 0;
-		table->packets 		  	  = 0;
-		table->bytes 		  	  = 0;
+		table->flow_start 		    = 0;
+		table->flow_end 		    = 0;
+		table->packets 		  	    = 0;
+		table->bytes 		  	    = 0;
 
 		// apply copy and processing sequence
 		for ( i=0; i<table->number_of_sequences; i++ ) {
@@ -1320,6 +1383,15 @@ char				*string;
 						*((uint32_t *)&out[output_offset+8])  = t.val.val32[0];
 						*((uint32_t *)&out[output_offset+12]) = t.val.val32[1];
 					} break;
+				case move32_sampling:
+					/* 64bit access to potentially unaligned output buffer. use 2 x 32bit for _LP64 CPUs */
+					{ type_mask_t t;
+						t.val.val64 = Get_val32((void *)&in[input_offset]);
+						t.val.val64 *= sampling_rate;
+						*((uint32_t *)&out[output_offset]) 	 = t.val.val32[0];
+						*((uint32_t *)&out[output_offset+4]) = t.val.val32[1];
+					  	*(uint64_t *)stack = t.val.val64;
+					} break;
 				case move64_sampling:
 					/* 64bit access to potentially unaligned output buffer. use 2 x 32bit for _LP64 CPUs */
 					{ type_mask_t t;
@@ -1335,6 +1407,15 @@ char				*string;
 					  *(uint64_t *)stack = DateMiliseconds;
 
 					} break;
+				case move_mac:
+					/* 64bit access to potentially unaligned output buffer. use 2 x 32bit for _LP64 CPUs */
+					{ type_mask_t t;
+
+						t.val.val64 = Get_val48((void *)&in[input_offset]);
+						*((uint32_t *)&out[output_offset])   = t.val.val32[0];
+						*((uint32_t *)&out[output_offset+4]) = t.val.val32[1];
+					}
+					break;
 				case zero8:
 					out[output_offset] = 0;
 					break;
@@ -1355,7 +1436,7 @@ char				*string;
 				default:
 					syslog(LOG_ERR, "Process_ipfix: Software bug! Unknown Sequence: %u. at %s line %d", 
 						table->sequence[i].id, __FILE__, __LINE__);
-					dbg_printf("Software bug! Unknown Sequence: %u. at %s line %d", 
+					dbg_printf("Software bug! Unknown Sequence: %u. at %s line %d\n", 
 						table->sequence[i].id, __FILE__, __LINE__);
 			}
 		}
@@ -1366,6 +1447,14 @@ char				*string;
 				data_record->srcport = 0;
 				data_record->dstport = Get_val16((void *)&in[table->ICMP_offset]);
 			}
+		}
+
+		// check, if we need to store the packet received time
+		if ( table->received_offset ) {
+			type_mask_t t;
+			t.val.val64 = (uint64_t)((uint64_t)fs->received.tv_sec * 1000LL) + (uint64_t)((uint64_t)fs->received.tv_usec / 1000LL);
+				*((uint32_t *)&out[table->received_offset])   = t.val.val32[0];
+				*((uint32_t *)&out[table->received_offset+4]) = t.val.val32[1];
 		}
 
 		// split first/last time into epoch/msec values
@@ -1384,19 +1473,19 @@ char				*string;
 		// check if we need to record the router IP address
 		if ( table->router_ip_offset ) {
 			int output_offset = table->router_ip_offset;
-			if ( exporter->sa_family == PF_INET6 ) {
+			if ( exporter->info.sa_family == PF_INET6 ) {
 				// 64bit access to potentially unaligned output buffer. use 2 x 32bit for _LP64 CPUs 
 				type_mask_t t;
 					  
-				t.val.val64 = exporter->ip.v6[0];
+				t.val.val64 = exporter->info.ip.v6[0];
 				*((uint32_t *)&out[output_offset]) 	  = t.val.val32[0];
 				*((uint32_t *)&out[output_offset+4])  = t.val.val32[1];
 
-				t.val.val64 = exporter->ip.v6[1];
+				t.val.val64 = exporter->info.ip.v6[1];
 				*((uint32_t *)&out[output_offset+8])  = t.val.val32[0];
 				*((uint32_t *)&out[output_offset+12]) = t.val.val32[1];
 			} else {
-				*((uint32_t *)&out[output_offset]) = exporter->ip.v4;
+				*((uint32_t *)&out[output_offset]) = exporter->info.ip.v4;
 			}
 		}
 
@@ -1421,6 +1510,7 @@ char				*string;
 				fs->nffile->stat_record->numpackets_other += table->packets;
 				fs->nffile->stat_record->numbytes_other   += table->bytes;
 		}
+		exporter->flows++;
 		fs->nffile->stat_record->numflows++;
 		fs->nffile->stat_record->numpackets	+= table->packets;
 		fs->nffile->stat_record->numbytes	+= table->bytes;
@@ -1450,7 +1540,7 @@ char				*string;
 
 		if ( verbose ) {
 			master_record_t master_record;
-			ExpandRecord_v2((common_record_t *)data_record, &(table->extension_info), &master_record);
+			ExpandRecord_v2((common_record_t *)data_record, &(table->extension_info), &(exporter->info), &master_record);
 		 	format_file_block_record(&master_record, &string, 0);
 			printf("%s\n", string);
 		}
@@ -1482,7 +1572,7 @@ char				*string;
 } // End of Process_ipfix_data
 
 void Process_IPFIX(void *in_buff, ssize_t in_buff_cnt, FlowSource_t *fs) {
-exporter_domain_t	*exporter;
+exporter_ipfix_domain_t	*exporter;
 ssize_t				size_left;
 uint32_t			ExportTime, ObservationDomain, Sequence, flowset_length;
 ipfix_header_t		*ipfix_header;
@@ -1507,8 +1597,8 @@ static uint32_t		packet_cntr = 0;
 		syslog(LOG_ERR,"Process_ipfix: Exporter NULL: Abort ipfix record processing");
 		return;
 	}
-	exporter->PacketSequence = Sequence;
-
+	exporter->packets++;
+	//exporter->PacketSequence = Sequence;
 	flowset_header	= (void *)ipfix_header + IPFIX_HEADER_LENGTH;
 	size_left 	   -= IPFIX_HEADER_LENGTH;
 
@@ -1517,6 +1607,27 @@ static uint32_t		packet_cntr = 0;
 		(long long unsigned)exporter->DataRecords, size_left);
 
 	dbg_printf("[%u] Sequence: %u\n", ObservationDomain, Sequence);
+
+	// sequence check
+	// 2^32 wrap is handled automatically as both counters overflow
+	if ( Sequence != exporter->PacketSequence ) {
+		if ( exporter->DataRecords != 0 ) {
+			// sync sequence on first data record without error report
+			fs->nffile->stat_record->sequence_failure++;
+			exporter->sequence_failure++;
+			dbg_printf("[%u] Sequence check failed: last seq: %u, seq %u\n", 
+				exporter->info.id, Sequence, exporter->PacketSequence);
+			/* maybee to noise onbuggy exporters
+			syslog(LOG_ERR, "Process_ipfix [%u] Sequence error: last seq: %u, seq %u\n", 
+				info.id, exporter->LastSequence, Sequence);
+			*/
+		} else {
+			dbg_printf("[%u] Sync Sequence: %u\n", exporter->info.id, Sequence);
+		}
+		exporter->PacketSequence = Sequence;
+	} else {
+		dbg_printf("[%u] Sequence check ok\n", exporter->info.id);
+	}
 
 	// iterate over all set
 	flowset_length = 0;
@@ -1578,15 +1689,15 @@ static uint32_t		packet_cntr = 0;
 					table = GetTranslationTable(exporter, flowset_id);
 					if ( table ) {
 						Process_ipfix_data(exporter, flowset_header, fs, table);
+						exporter->DataRecords++;
 					} else if ( HasOptionTable(fs, flowset_id) ) {
 						// Process_ipfix_option_data(exporter, flowset_header, fs);
 					} else {
 						// maybe a flowset with option data
 						dbg_printf("Process ipfix: [%u] No table for id %u -> Skip record\n", 
-							exporter->ObservationDomain, flowset_id);
+							exporter->info.id, flowset_id);
 					}
 
-					exporter->DataRecords++;
 				}
 			}
 		} // End of switch
@@ -1597,3 +1708,4 @@ static uint32_t		packet_cntr = 0;
 	} // End of while
 
 } // End of Process_IPFIX
+

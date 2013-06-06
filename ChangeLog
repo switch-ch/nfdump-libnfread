@@ -1,4 +1,36 @@
-2011-03-12 1.6.6
+2012-10-26 1.6.8
+- Add ip list option for 'next ip' in filter syntax
+- Accept v9 sampler_id in 2bytes
+- Fix IPFIX mac address bug - did not get collected
+- Add IPFIX packet/octet TotalCount fields 85/86
+- Add received timestamp to sflow collector
+- Fix long flow duration calculation - 32bit overflow
+- Fix v9 sampling ID: allow 2 byte ID
+- Add IPFIX options as rfc5101 section-6.2
+- Add exporter records for sflow collector
+- Fix bug for MAC address printing %idmc and %odmc.
+- Add received time stamp extension
+- Add recursive format parser. Allows to extend predefined formats.
+- Change flow record sorting to heapsort. remove limit 1000
+- Merge -m option to -O tstart. -m now depricated.
+- Add -O tend. Print order according to tend of flows ascending
+- Apply -O print order for printing flow cache. Applies to -A
+
+2012-07-31 1.6.7-tc-1
+- Special version for TC
+- Print exporter and sampling records with nfdump -E
+- Added exporter and sampling records to file.
+
+2012-07-30 1.6.7
+- Prepare for file catalog in current file format.
+- Fix bug in ReadBlock when reading flow from stdin pipe
+- Add new more flexible translation engine for v9
+- Add nprobe client/server delay fields
+- Prepare for NSEL merging
+- Fix memory corruption with double -A flags
+- Fix bug in nfreader with compat15 mode files
+
+2012-03-12 1.6.6
 - Minor IPFIX bug.
 - IPFIX implement template withdraw
 - For IPFIX, check packet sequence per template and observation domain
@@ -7,7 +39,7 @@
 - Fixed typos
 - Fix seg fault bug - test for EMPTY_LIST was missing at several places.
 
-2011-02-19 1.6.6b1
+2012-02-19 1.6.6b1
 - Fix bps/pps. make it uint64_t, as bps/pps > 4Gb/s overflows.
 - In record raw print mode: decode ICMP instead of src/dst ports
 - sflow use announced exporter IP instead of sending IP for router ID

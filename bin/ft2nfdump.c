@@ -83,6 +83,9 @@ typedef struct v5_block_s {
 	uint8_t		data[4];	// link to next record
 } v5_block_t;
 
+/* externals */
+extern uint32_t Max_num_extensions;
+
 /* prototypes */
 void usage(char *name);
 
@@ -101,14 +104,14 @@ void usage(char *name) {
 					"-V\t\tPrint version and exit.\n"
 					"-r\t\tread input from file\n"
 					"Convert flow-tools format to nfdump format:\n"
-					"ft2nfdump -r <flow-tools-data-file> | nfdump -w <nfdump-file>\n"
+					"ft2nfdump -r <flow-tools-data-file> | nfdump -z -w <nfdump-file>\n"
 				, name);
 
 } // End of usage
 
 extension_info_t *GenExtensionMap(struct ftio *ftio) {
 extension_info_t *extension_info;
-int	i, Max_num_extensions;
+int	i;
 
    	if (ftio_check_xfield(ftio, FT_XFIELD_DPKTS |
 		FT_XFIELD_DOCTETS | FT_XFIELD_FIRST | FT_XFIELD_LAST | 
@@ -120,17 +123,13 @@ int	i, Max_num_extensions;
 		return NULL;
 	}
 
+	InitExtensionMaps(NULL);
 	extension_info = (extension_info_t *)malloc(sizeof(extension_info_t));
 	if ( !extension_info  ) {
 		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
 		return NULL;
 	}
 	memset((void *)extension_info, 0, sizeof(extension_info_t));
-
-	Max_num_extensions = 0;
-	i = 1;
-	while ( extension_descriptor[i++].id ) 
-		Max_num_extensions++;
 
 	extension_info->map  = (extension_map_t *)malloc(sizeof(extension_map_t) + Max_num_extensions * sizeof(uint16_t));
 	if ( !extension_info->map  ) {
@@ -198,7 +197,8 @@ master_record_t	 record;
 char				*s;
 uint32_t			cnt;
 
-	nffile = OpenNewFile( "-", NULL, 0, 0, &s);
+	s = "flow-tools";
+	nffile = OpenNewFile( "-", NULL, 0, 0, s);
 	if ( !nffile ) {
 		fprintf(stderr, "%s\n", s);
 		return 1;
@@ -210,9 +210,9 @@ uint32_t			cnt;
 	fts3rec_compute_offsets(&fo, &ftv);
 
 	memset((void *)&record, 0, sizeof(record));
-	record.map_ref 		= extension_info->map;
-	record.type 		= CommonRecordType;
-	record.exporter_ref	= 0;
+	record.map_ref 		  = extension_info->map;
+	record.type 		  = CommonRecordType;
+	record.exporter_sysid = 0;
 
 	// only v4 addresses
 	ClearFlag(record.flags, FLAG_IPV6_ADDR);

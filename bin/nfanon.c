@@ -338,32 +338,43 @@ int	v1_map_done = 0;
 
 		flow_record = nffile_r->buff_ptr;
 		for ( i=0; i < nffile_r->block_header->NumRecords; i++ ) {
-			if ( flow_record->type == CommonRecordType ) {
-				uint32_t map_id = flow_record->ext_map;
-				if ( extension_map_list.slot[map_id] == NULL ) {
-					LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
-				} else {
-					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
-
-					// update number of flows matching a given map
-					extension_map_list.slot[map_id]->ref_count++;
+			switch ( flow_record->type ) { 
+				case CommonRecordType: {
+					uint32_t map_id = flow_record->ext_map;
+					if ( extension_map_list.slot[map_id] == NULL ) {
+						LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
+					} else {
+						ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], NULL, &master_record);
+	
+						// update number of flows matching a given map
+						extension_map_list.slot[map_id]->ref_count++;
 			
-					AnonRecord(&master_record);
-					PackRecord(&master_record, nffile_w);
+						AnonRecord(&master_record);
+						PackRecord(&master_record, nffile_w);
+					}
+
+					} break;
+				case ExtensionMapType: {
+					extension_map_t *map = (extension_map_t *)flow_record;
+
+					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+					 	// flush new map
+					} // else map already known and flushed
+					AppendToBuffer(nffile_w, (void *)map, map->size);
+
+					} break; 
+				case ExporterRecordType:
+				case SamplerRecordype:
+				case ExporterInfoRecordType:
+				case ExporterStatRecordType:
+				case SamplerInfoRecordype:
+						// Silently skip exporter/sampler records
+					break;
+
+				default: {
+					fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
 				}
-
-			} else if ( flow_record->type == ExtensionMapType ) {
-				extension_map_t *map = (extension_map_t *)flow_record;
-
-				if ( Insert_Extension_Map(&extension_map_list, map) ) {
-					 // flush new map
-				} // else map already known and flushed
-				AppendToBuffer(nffile_w, (void *)map, map->size);
-
-			} else {
-				fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
 			}
-
 			// Advance pointer by number of bytes for netflow record
 			flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 

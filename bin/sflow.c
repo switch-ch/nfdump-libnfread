@@ -173,10 +173,14 @@ typedef struct exporter_sflow_s {
 	// link chain
 	struct exporter_sflow_s *next;
 
-	// exporter identifier
-	ip_addr_t	ip;
-	uint32_t	sa_family;
-	uint32_t	agentSubId;
+	// generic exporter information
+	exporter_info_record_t info;
+
+    uint64_t    packets;            // number of packets sent by this exporter
+    uint64_t    flows;              // number of flow records sent by this exporter
+    uint32_t    sequence_failure;   // number of sequence failues
+
+    generic_sampler_t       *sampler;
 
 	// extension map
 	// extension maps are common for all exporters
@@ -212,6 +216,7 @@ static uint16_t sflow_extensions[] = {
 	EX_MULIPLE, 
 	EX_VLAN, 
 	EX_MAC_1, 
+	EX_RECEIVED,
 	0 			// final token
 };
 static int Num_enabled_extensions;
@@ -236,7 +241,7 @@ static struct sflow_ip_extensions_s {
 #define SFLOW_ROUTER_IP    4
 static int IP_extension_mask = 0;
 
-static inline exporter_sflow_t *GetExporter(FlowSource_t *fs, uint32_t agentSubId);
+static inline exporter_sflow_t *GetExporter(FlowSource_t *fs, uint32_t agentSubId, uint32_t meanSkipCount);
 
 /* 
  * unused
@@ -1049,11 +1054,13 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	if ( ip_flags >= MAX_SFLOW_EXTENSIONS ) {
 		syslog(LOG_ERR,"SFLOW: Corrupt ip_flags: %u", ip_flags);
 	}
-	exporter = GetExporter(fs, sample->agentSubId);
+	exporter = GetExporter(fs, sample->agentSubId, sample->meanSkipCount);
 	if ( !exporter ) {
 		syslog(LOG_ERR,"SFLOW: Exporter NULL: Abort sflow record processing");
 		return;
 	}
+	exporter->packets++;
+
 	// get appropriate extension map
 	extension_map = exporter->sflow_extension_info[ip_flags].map;
 	if ( !extension_map ) {
@@ -1077,26 +1084,26 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 
 	common_record = (common_record_t *)fs->nffile->buff_ptr;
 
-	common_record->size			= sflow_output_record_size[ip_flags] + ipsize;
-	common_record->type			= CommonRecordType;
-	common_record->flags		= 0;
+	common_record->size			  = sflow_output_record_size[ip_flags] + ipsize;
+	common_record->type			  = CommonRecordType;
+	common_record->flags		  = 0;
 	SetFlag(common_record->flags, FLAG_SAMPLED);
 
-	common_record->exporter_ref	= 0;
-	common_record->ext_map		= extension_map->map_id;
+	common_record->exporter_sysid = exporter->info.sysid;
+	common_record->ext_map		  = extension_map->map_id;
 
-	common_record->first		= now.tv_sec;
-	common_record->last			= common_record->first;
-	common_record->msec_first	= now.tv_usec / 1000;
-	common_record->msec_last	= common_record->msec_first;
-	_t							= 1000*now.tv_sec + common_record->msec_first;	// tmp buff for first_seen
+	common_record->first		  = now.tv_sec;
+	common_record->last			  = common_record->first;
+	common_record->msec_first	  = now.tv_usec / 1000;
+	common_record->msec_last	  = common_record->msec_first;
+	_t							  = 1000*now.tv_sec + common_record->msec_first;	// tmp buff for first_seen
 
-	common_record->fwd_status	= 0;
-	common_record->tcp_flags	= sample->dcd_tcpFlags;
-	common_record->prot			= sample->dcd_ipProtocol;
-	common_record->tos			= sample->dcd_ipTos;
-	common_record->srcport		= (uint16_t)sample->dcd_sport;
-	common_record->dstport		= (uint16_t)sample->dcd_dport;
+	common_record->fwd_status	  = 0;
+	common_record->tcp_flags	  = sample->dcd_tcpFlags;
+	common_record->prot			  = sample->dcd_ipProtocol;
+	common_record->tos			  = sample->dcd_ipTos;
+	common_record->srcport		  = (uint16_t)sample->dcd_sport;
+	common_record->dstport		  = (uint16_t)sample->dcd_dport;
 
 	if(sample->gotIPV6) {
 		u_char 		*b;
@@ -1232,6 +1239,12 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 				SetFlag(common_record->flags, FLAG_IPV6_EXP);
 			}
 			break;
+			case EX_RECEIVED: {
+				tpl_ext_27_t *tpl = (tpl_ext_27_t *)next_data;
+				tpl->received  = (uint64_t)((uint64_t)fs->received.tv_sec * 1000LL) + (uint64_t)((uint64_t)fs->received.tv_usec / 1000LL);
+printf("t-received: %llu\n", tpl->received);
+				next_data = (void *)tpl->data;
+			} break;
 			default: 
 				// this should never happen
 				syslog(LOG_ERR,"SFLOW: Unexpected extension %i for sflow record. Skip extension", id);
@@ -1278,6 +1291,7 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 			stat_record->numpackets_other += _packets;
 			stat_record->numbytes_other   += _bytes;
 	}
+	exporter->flows++;
 	stat_record->numflows++;
 	stat_record->numpackets	+= _packets;
 	stat_record->numbytes	+= _bytes;
@@ -1285,7 +1299,7 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	if ( verbose ) {
 		master_record_t master_record;
 		char	*string;
-		ExpandRecord_v2((common_record_t *)common_record, &exporter->sflow_extension_info[ip_flags], &master_record);
+		ExpandRecord_v2((common_record_t *)common_record, &exporter->sflow_extension_info[ip_flags], &(exporter->info), &master_record);
 	 	format_file_block_record(&master_record, &string, 0);
 		printf("%s\n", string);
 	}
@@ -2615,16 +2629,31 @@ int i, id, extension_size, map_size, map_index;
 
 } // End of Setup_Extension_Info
 
-static inline exporter_sflow_t *GetExporter(FlowSource_t *fs, uint32_t agentSubId) {
+static inline exporter_sflow_t *GetExporter(FlowSource_t *fs, uint32_t agentSubId, uint32_t meanSkipCount) {
 exporter_sflow_t **e = (exporter_sflow_t **)&(fs->exporter_data);
+generic_sampler_t *sampler;
+#define IP_STRING_LEN   40
+char ipstr[IP_STRING_LEN];
 int i;
 
 	// search the appropriate exporter engine
 	while ( *e ) {
-		if ( (*e)->agentSubId == agentSubId && 
-			 (*e)->ip.v6[0] == fs->ip.v6[0] && (*e)->ip.v6[1] == fs->ip.v6[1]) 
+		if ( (*e)->info.id == agentSubId && (*e)->info.version == SFLOW_VERSION &&
+			 (*e)->info.ip.v6[0] == fs->ip.v6[0] && (*e)->info.ip.v6[1] == fs->ip.v6[1]) 
 			return *e;
 		e = &((*e)->next);
+	}
+
+	if ( fs->sa_family == AF_INET ) {
+		uint32_t _ip = htonl(fs->ip.v4);
+		inet_ntop(AF_INET, &_ip, ipstr, sizeof(ipstr));
+	} else if ( fs->sa_family == AF_INET6 ) {
+		uint64_t _ip[2];
+		_ip[0] = htonll(fs->ip.v6[0]);
+		_ip[1] = htonll(fs->ip.v6[1]);
+		inet_ntop(AF_INET6, &_ip, ipstr, sizeof(ipstr));
+	} else {
+		strncpy(ipstr, "<unknown>", IP_STRING_LEN);
 	}
 
 	// nothing found
@@ -2636,17 +2665,42 @@ int i;
 		return NULL;
 	}
 	memset((void *)(*e), 0, sizeof(exporter_sflow_t));
-	(*e)->agentSubId 	= agentSubId;
-	(*e)->ip.v6[0]		= fs->ip.v6[0];
-	(*e)->ip.v6[1]		= fs->ip.v6[1];
-	(*e)->sa_family		= fs->sa_family;
-	(*e)->next	 		= NULL;
+	(*e)->next	 			= NULL;
+	(*e)->info.header.type  = ExporterInfoRecordType;
+	(*e)->info.header.size  = sizeof(exporter_info_record_t);
+	(*e)->info.version		= SFLOW_VERSION;
+	(*e)->info.id 			= agentSubId;
+	(*e)->info.ip			= fs->ip;
+	(*e)->info.sa_family	= fs->sa_family;
+	(*e)->sequence_failure	= 0;
+	(*e)->packets			= 0;
+	(*e)->flows				= 0;
 	for (i=0; i<MAX_SFLOW_EXTENSIONS; i++ ) {
 		(*e)->sflow_extension_info[i].map = NULL;
 	}
 
+	sampler = (generic_sampler_t *)malloc(sizeof(generic_sampler_t));
+	if ( !sampler ) {
+		syslog(LOG_ERR, "SFLOW: malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+		return NULL;
+	}
+	(*e)->sampler = sampler;
 
-	dbg_printf("New Exporter: agentSubId: %i\n", agentSubId);
+	sampler->info.header.type 	= SamplerInfoRecordype;
+	sampler->info.header.size	= sizeof(sampler_info_record_t);
+	sampler->info.id			= -1;
+	sampler->info.mode			= 0;
+	sampler->info.interval		= meanSkipCount;
+	sampler->next				= NULL;
+
+	FlushInfoExporter(fs, &((*e)->info));
+	sampler->info.exporter_sysid		= (*e)->info.sysid;
+	FlushInfoSampler(fs, &(sampler->info));
+
+	dbg_printf("SFLOW: New exporter: SysID: %u, agentSubId: %u, MeanSkipCount: %u, IP: %s\n", 
+		(*e)->info.sysid, agentSubId, meanSkipCount, ipstr);
+	syslog(LOG_INFO, "SFLOW: New exporter: SysID: %u, agentSubId: %u, MeanSkipCount: %u, IP: %s\n", 
+		(*e)->info.sysid, agentSubId, meanSkipCount, ipstr);
 
 	return (*e);
 

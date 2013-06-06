@@ -63,6 +63,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "netflow_v5_v7.h"
 
 extern extension_descriptor_t extension_descriptor[];
@@ -210,7 +211,8 @@ nffile_t			*nffile;
  	extension_info.map->ex_id[i++] = EX_MPLS;
  	extension_info.map->ex_id[i++] = EX_ROUTER_IP_v4;
  	extension_info.map->ex_id[i++] = EX_ROUTER_ID;
-	extension_info.map->ex_id[i++] = 0;
+ 	extension_info.map->ex_id[i++] = EX_BGPADJ;
+	extension_info.map->ex_id[i] = 0;
 	extension_info.map->size = sizeof(extension_map_t) + i * sizeof(uint16_t);
 
     // align 32bits
@@ -238,6 +240,7 @@ nffile_t			*nffile;
 	record.type	= CommonRecordType;
 
 	record.flags   		= 0;
+	record.exporter_sysid = 1;
 	record.tcp_flags   	= 1;
 	record.tos 		   	= 2;
 	record.fwd_status	= 0;
@@ -279,6 +282,11 @@ nffile_t			*nffile;
 	record.mpls_label[7] = 8080 << 4;
 	record.mpls_label[8] = 9090 << 4;
 	record.mpls_label[9] = (100100 << 4) + 1;
+	record.client_nw_delay_usec = 2;
+	record.server_nw_delay_usec = 22;
+	record.appl_latency_usec = 222;
+	record.bgpNextAdjacentAS = 45804;
+	record.bgpPrevAdjacentAS = 32775;
 
 	fprintf(stderr, "IPv4 32bit packets 32bit bytes\n");
 	UpdateRecord(&record);

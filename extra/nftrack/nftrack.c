@@ -125,6 +125,10 @@ uint64_t total_bytes;
 		LogError("GetNextFile() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		return NULL;
 	}
+	if ( nffile == EMPTY_LIST ) {
+		LogError("Empty file list. No files to process\n");
+		return NULL;
+	}
 
 	port_table    = (data_row *)calloc(65536, sizeof(data_row));
     if ( !port_table) {
@@ -189,7 +193,7 @@ uint64_t total_bytes;
                 if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
                     LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
                 } else {
-                    ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
+                    ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], NULL, &master_record);
             
    					ret = (*Engine->FilterEngine)(Engine);
 

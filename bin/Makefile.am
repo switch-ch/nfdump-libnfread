@@ -32,7 +32,7 @@ AM_CFLAGS = -ggdb
 
 common =  nf_common.c nf_common.h version.h 
 util = util.c util.h
-filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h nfxstat.h nfxstat.c
+filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h nffile.c nffile.h nfx.c nfx.h nfxstat.h nfxstat.c 
 nflist = flist.c flist.h fts_compat.c fts_compat.h
 filter = grammar.y scanner.l nftree.c nftree.h ipconv.c ipconv.h rbtree.h
 nfprof = nfprof.c nfprof.h
@@ -46,18 +46,19 @@ nfv5v7 = netflow_v5_v7.c netflow_v5_v7.h
 nfstatfile = nfstatfile.c nfstatfile.h
 nflowcache = nflowcache.c nflowcache.h
 bookkeeper = bookkeeper.c bookkeeper.h
+exporter = exporter.c exporter.h
 expire= expire.c expire.h
 launch = launch.c launch.h
 
-nfdump_SOURCES = nfdump.c nfdump.h nfstat.c nfstat.h nfexport.c nfexport.h \
-	$(common) $(nflowcache) $(util) $(filelzo) $(nflist) $(filter) $(nfprof)
+nfdump_SOURCES = nfdump.c nfdump.h nfstat.c nfstat.h nfexport.c nfexport.h  \
+	$(common) $(nflowcache) $(util) $(filelzo) $(nflist) $(filter) $(nfprof) $(exporter)
 
 nfreplay_SOURCES = nfreplay.c \
 	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfprof) \
-	$(nfnet) $(collector) $(nfv1) $(nfv9) $(nfv5v7)
+	$(nfnet) $(collector) $(nfv1) $(nfv9) $(nfv5v7) $(ipfix) $(exporter)
 
 nfprofile_SOURCES = nfprofile.c profile.c profile.h \
-	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfstatfile)
+	$(common) $(util) $(filelzo) $(nflist) $(filter) $(nfstatfile) $(exporter)
 nfprofile_LDADD = -lrrd
 
 nftrack_SOURCES = ../extra/nftrack/nftrack.c  ../extra/nftrack/nftrack_rrd.c  ../extra/nftrack/nftrack_stat.c \
@@ -86,7 +87,7 @@ sfcapd_LDADD = -lpcap
 endif
 
 nfreader_SOURCES = nfreader.c \
-	$(util) $(filelzo) $(nflist) 
+	$(util) $(filelzo) $(nflist)  $(exporter)
 
 nfanon_SOURCES = nfanon.c \
 	$(util) $(filelzo) $(nflist) $(anon)

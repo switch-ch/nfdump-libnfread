@@ -52,11 +52,6 @@ typedef struct srecord_s {
 // common_record_t defines ext_map as uint_8, so max 256 extension maps allowed.
 // should be enough anyway
 
-typedef struct sampler_s {
-	uint32_t	interval;
-	uint16_t	table_id;
-	uint8_t		mode;
-} sampler_t;
 
 typedef struct option_offset_s {
 	struct option_offset_s *next;
@@ -75,6 +70,26 @@ typedef struct option_offset_s {
 	uint16_t	offset_std_sampler_algorithm;
 
 } option_offset_t;
+
+typedef struct generic_sampler_s {
+	struct generic_sampler_s *next;
+	sampler_info_record_t	info;
+} generic_sampler_t;
+
+typedef struct generic_exporter_s {
+	// link chain
+	struct generic_exporter_s *next;
+
+	// generic exporter information
+	exporter_info_record_t info;
+
+	uint64_t	packets;			// number of packets sent by this exporter
+	uint64_t	flows;				// number of flow records sent by this exporter
+	uint32_t	sequence_failure;	// number of sequence failues
+
+	generic_sampler_t		*sampler;
+
+} generic_exporter_t;
 
 typedef struct FlowSource_s {
 	// link
@@ -102,24 +117,17 @@ typedef struct FlowSource_s {
 	xstat_t				*xstat;
 
 	// Any exporter specific data
-	void				*exporter_data;
+	generic_exporter_t	*exporter_data;
+	uint32_t			exporter_count;
+	struct timeval		received;
 
 	// extension map list
 	struct {
-#define MAP_BLOCKSIZE	16
+#define BLOCK_SIZE	16
 		int	next_free;
 		int	max_maps;
 		extension_map_t	**maps;
 	} extension_map_list;
-
-	// Netflow v9 only:
-	// sampling information: 
-	// each flow source may have several sampler applied
-	// tags #48, #49, #50
-	sampler_t 		 **sampler;
-
-	// global sampling information #34 #35
-	sampler_t		std_sampling;
 
 	option_offset_t *option_offset_table;
 
@@ -137,15 +145,13 @@ int InitExtensionMapList(FlowSource_t *fs);
 
 int AddExtensionMap(FlowSource_t *fs, extension_map_t *map);
 
-void FlushExtensionMaps(FlowSource_t *fs);
+void FlushStdRecords(FlowSource_t *fs);
 
-void InsertSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_sampler_id, uint16_t sampler_id_length, 
-	uint16_t offset_sampler_mode, uint16_t offset_sampler_interval);
+void FlushExporterStats(FlowSource_t *fs);
 
-void InsertStdSamplerOffset( FlowSource_t *fs, uint16_t id, uint16_t offset_std_sampler_interval, 
-	uint16_t offset_std_sampler_algorithm);
+int FlushInfoExporter(FlowSource_t *fs, exporter_info_record_t *exporter);
 
-void InsertSampler( FlowSource_t *fs, uint8_t sampler_id, sampler_t *sampler);
+int FlushInfoSampler(FlowSource_t *fs, sampler_info_record_t *sampler);
 
 int HasOptionTable(FlowSource_t *fs, uint16_t id );
 

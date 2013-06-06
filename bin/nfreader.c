@@ -78,6 +78,9 @@
 
 #include "nffile.h"
 #include "nfx.h"
+#include "bookkeeper.h"
+#include "nfxstat.h"
+#include "collector.h"
 #include "util.h"
 #include "flist.h"
 
@@ -89,6 +92,8 @@ typedef uint32_t    pointer_addr_t;
 
 // module limited globals
 extension_map_list_t extension_map_list;
+
+extern generic_exporter_t **exporter_list;
 
 /* Function Prototypes */
 static void usage(char *name);
@@ -223,10 +228,17 @@ int	v1_map_done = 0;
 				}
 				map->type 	= ExtensionMapType;
 				map->size 	= sizeof(extension_map_t) + 2 * sizeof(uint16_t);
-				map->map_id = 0;
+				if (( map->size & 0x3 ) != 0 ) {
+					map->size += 4 - ( map->size & 0x3 );
+				}
+
+				map->map_id = INIT_ID;
+
 				map->ex_id[0]  = EX_IO_SNMP_2;
 				map->ex_id[1]  = EX_AS_2;
 				map->ex_id[2]  = 0;
+
+				map->extension_size  = 0;
 
 				Insert_Extension_Map(&extension_map_list, map);
 
@@ -258,36 +270,46 @@ int	v1_map_done = 0;
 		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			char        string[1024];
 
-			if ( flow_record->type == CommonRecordType ) {
-				uint32_t map_id = flow_record->ext_map;
-				if ( extension_map_list.slot[map_id] == NULL ) {
-					snprintf(string, 1024, "Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
-					string[1023] = '\0';
-				} else {
-					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], &master_record);
+			switch ( flow_record->type ) {
+				case CommonRecordType: {
+					uint32_t map_id = flow_record->ext_map;
+					generic_exporter_t *exp_info = exporter_list[flow_record->exporter_sysid];
+					if ( extension_map_list.slot[map_id] == NULL ) {
+						snprintf(string, 1024, "Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
+						string[1023] = '\0';
+					} else {
+						ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], 
+							exp_info ? &(exp_info->info) : NULL, &master_record);
 
-					// update number of flows matching a given map
-					extension_map_list.slot[map_id]->ref_count++;
+						// update number of flows matching a given map
+						extension_map_list.slot[map_id]->ref_count++;
 			
-					/* 
-			 		* insert hier your calls to your processing routine 
-			 		* master_record now contains the next flow record as specified in nffile.c
-			 		* for example you can print each record:
-			 		*
-			 		*/
-					print_record(&master_record, string);
+						/* 
+			 			* insert hier your calls to your processing routine 
+			 			* master_record now contains the next flow record as specified in nffile.c
+			 			* for example you can print each record:
+			 			*
+			 			*/
+						print_record(&master_record, string);
+					}
+					printf("%s\n", string);
+	
+					} break;
+				case ExtensionMapType: {
+					extension_map_t *map = (extension_map_t *)flow_record;
+
+					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+					 	// flush new map
+					} // else map already known and flushed
+
+					} break;
+				case ExporterRecordType:
+				case SamplerRecordype:
+						// Silently skip exporter records
+					break;
+				default: {
+					fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
 				}
-				printf("%s\n", string);
-
-			} else if ( flow_record->type == ExtensionMapType ) {
-				extension_map_t *map = (extension_map_t *)flow_record;
-
-				if ( Insert_Extension_Map(&extension_map_list, map) ) {
-					 // flush new map
-				} // else map already known and flushed
-
-			} else {
-				fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
 			}
 
 			// Advance pointer by number of bytes for netflow record
