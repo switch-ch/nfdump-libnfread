@@ -1,6 +1,5 @@
 /*
- *  Copyright (c) 2009, Peter Haag
- *  Copyright (c) 2004-2008, SWITCH - Teleinformatikdienste fuer Lehre und Forschung
+ *  Copyright (c) 2013, Peter Haag
  *  All rights reserved.
  *  
  *  Redistribution and use in source and binary forms, with or without 
@@ -11,7 +10,7 @@
  *   * Redistributions in binary form must reproduce the above copyright notice, 
  *     this list of conditions and the following disclaimer in the documentation 
  *     and/or other materials provided with the distribution.
- *   * Neither the name of SWITCH nor the names of its contributors may be 
+ *   * Neither the name of the author nor the names of its contributors may be 
  *     used to endorse or promote products derived from this software without 
  *     specific prior written permission.
  *  
@@ -27,60 +26,16 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
  *  POSSIBILITY OF SUCH DAMAGE.
  *  
- *  $Author: haag $
+ *  $Author:$
  *
- *  $Id: util.h 39 2009-11-25 08:11:15Z haag $
+ *  $Id:$
  *
- *  $LastChangedRevision: 39 $
+ *  $LastChangedRevision:$
  *	
+ *
  */
 
-#ifndef _UTIL_H
-#define _UTIL_H 1
+int Init_pcap2nf(void);
 
-#define EBUFF_SIZE 256
+int StorePcapFlow(FlowSource_t *fs, struct FlowNode *Node);
 
-#ifdef WORDS_BIGENDIAN
-#	define ntohll(n)	(n)
-#	define htonll(n)	(n)
-#else
-#	define ntohll(n)	(((uint64_t)ntohl(n)) << 32) + ntohl((n) >> 32)
-#	define htonll(n)	(((uint64_t)htonl(n)) << 32) + htonl((n) >> 32)
-#endif
-
-typedef struct stringlist_s {
-	uint32_t	block_size;
-	uint32_t	max_index;
-	uint32_t	num_strings;
-	char		**list;
-} stringlist_t;
-
-void xsleep(long sec);
-
-void EndLog(void);
-
-int InitLog(char *name, char *facility);
-
-void LogError(char *format, ...);
-
-void LogInfo(char *format, ...);
-
-void InitStringlist(stringlist_t *list, int block_size);
-
-void InsertString(stringlist_t *list, char *string);
-
-int ScanTimeFrame(char *tstring, time_t *t_start, time_t *t_end);
-
-char *TimeString(time_t start, time_t end);
-
-char *UNIX2ISO(time_t t);
-
-time_t ISO2UNIX(char *timestring);
-
-void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multiple_files);
-
-char *GetCurrentFilename(void);
-
-void Setv6Mode(int mode);
-
-#endif //_UTIL_H

@@ -801,7 +801,9 @@ void		*p = (void *)input_record;
 
 	if ( (input_record->flags & FLAG_IPV6_ADDR) != 0 )	{ // IPv6
 		// IPv6
-		memcpy((void *)output_record->v6.srcaddr, p, 4 * sizeof(uint64_t));	
+		// keep compiler happy
+		// memcpy((void *)output_record->v6.srcaddr, p, 4 * sizeof(uint64_t));	
+		memcpy((void *)output_record->ip_union._ip_64.addr, p, 4 * sizeof(uint64_t));	
 		p = (void *)((pointer_addr_t)p + 4 * sizeof(uint64_t));
 	} else { 	
 		// IPv4

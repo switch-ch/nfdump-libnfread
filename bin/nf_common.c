@@ -667,7 +667,7 @@ data_block_header_t *h = (data_block_header_t *)header;
 
 void format_file_block_record(void *record, char ** s, int tag) {
 char 		*_s, as[IP_STRING_LEN], ds[IP_STRING_LEN], datestr1[64], datestr2[64], datestr3[64], flags_str[16];
-char		s_snet[IP_STRING_LEN], s_dnet[IP_STRING_LEN];
+char		s_snet[IP_STRING_LEN], s_dnet[IP_STRING_LEN], s_proto[32];
 int			i, id;
 ssize_t		slen, _slen;
 time_t		when;
@@ -798,14 +798,16 @@ extension_map_t	*extension_map = r->map_ref;
 	_s = data_string + _slen;
 	slen = STRINGSIZE - _slen;
 
+	Proto_string(r->prot, s_proto);
+
 	snprintf(_s, slen-1,
 "  fwd status   =               %3u\n"
 "  tcp flags    =              0x%.2x %s\n"
-"  proto        =               %3u\n"
+"  proto        =               %3u %s\n"
 "  (src)tos     =               %3u\n"
 "  (in)packets  =        %10llu\n"
 "  (in)bytes    =        %10llu\n",
-	r->fwd_status, r->tcp_flags, flags_str, r->prot, r->tos,
+	r->fwd_status, r->tcp_flags, flags_str, r->prot, s_proto, r->tos,
 		(unsigned long long)r->dPkts, (unsigned long long)r->dOctets);
 
 	_slen = strlen(data_string);
@@ -1591,7 +1593,7 @@ master_record_t *r = (master_record_t *)record;
  	ts = localtime(&when);
  	strftime(datestr3, 63, ",%Y-%m-%d %H:%M:%S", ts);
  
- 	snprintf(_s, slen-1, "%s.%03llu", datestr3, r->received % 1000L);
+ 	snprintf(_s, slen-1, "%s.%03llu", datestr3, (long long unsigned)r->received % 1000LL);
  	        _slen = strlen(data_string);
  	        _s = data_string + _slen;
  	        slen = STRINGSIZE - _slen;

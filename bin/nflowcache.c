@@ -53,6 +53,7 @@
 #endif
 
 #include "nffile.h"
+#include "nfx.h"
 #include "nflowcache.h"
 
 #ifndef DEVEL
@@ -404,7 +405,7 @@ uint32_t index = index_cache & FlowTable.IndexMask;
 
 } // End of hash_insert_FlowTable
 
-void InsertFlow(common_record_t *raw_record, master_record_t *flow_record) {
+void InsertFlow(common_record_t *raw_record, master_record_t *flow_record, extension_info_t *extension_info) {
 FlowTableRecord_t	*record;
 
 	// allocate enough memory for the new flow including all additional information in FlowTableRecord_t
@@ -424,7 +425,7 @@ FlowTableRecord_t	*record;
 	FlowTable.bucketcache[0] = record;
 	
 	// safe the extension map and exporter reference
-	record->map_ref = flow_record->map_ref;
+	record->map_info_ref = extension_info;
 	record->exp_ref = flow_record->exp_ref;
 
 	record->counter[INBYTES]	 = flow_record->dOctets;
@@ -438,7 +439,7 @@ FlowTableRecord_t	*record;
 
 
 
-void AddFlow(common_record_t *raw_record, master_record_t *flow_record ) {
+void AddFlow(common_record_t *raw_record, master_record_t *flow_record, extension_info_t *extension_info ) {
 static void			*keymem = NULL, *bidirkeymem = NULL;
 FlowTableRecord_t	*FlowTableRecord;
 uint32_t			index_cache; 
@@ -488,7 +489,7 @@ uint32_t			index_cache;
 		FlowTableRecord->counter[OUTPACKETS] = flow_record->out_pkts;
 		FlowTableRecord->counter[FLOWS]   	 = flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 
-		FlowTableRecord->map_ref  	 		 = flow_record->map_ref;
+		FlowTableRecord->map_info_ref  	 	 = extension_info;
 		FlowTableRecord->exp_ref  	 		 = flow_record->exp_ref;
 
 		// keymen got part of the cache
@@ -541,7 +542,7 @@ uint32_t			index_cache;
 			FlowTableRecord->counter[OUTBYTES]   = flow_record->out_bytes;
 			FlowTableRecord->counter[OUTPACKETS] = flow_record->out_pkts;
 			FlowTableRecord->counter[FLOWS]   	 = flow_record->aggr_flows ? flow_record->aggr_flows : 1;
-			FlowTableRecord->map_ref  	 		 = flow_record->map_ref;
+			FlowTableRecord->map_info_ref  	 	 = extension_info;
 			FlowTableRecord->exp_ref  	 		 = flow_record->exp_ref;
 
 			keymem = NULL;
@@ -636,6 +637,7 @@ struct aggregate_info_s *a;
 
 	stack_count = 0;
 	subnet 		= 0;
+	has_mask    = 0;
 
 	aggregate_key_len = 0;
 

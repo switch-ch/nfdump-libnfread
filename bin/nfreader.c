@@ -81,6 +81,7 @@
 #include "bookkeeper.h"
 #include "nfxstat.h"
 #include "collector.h"
+#include "exporter.h"
 #include "util.h"
 #include "flist.h"
 
@@ -91,7 +92,7 @@ typedef uint32_t    pointer_addr_t;
 #endif
 
 // module limited globals
-extension_map_list_t extension_map_list;
+extension_map_list_t *extension_map_list;
 
 extern generic_exporter_t **exporter_list;
 
@@ -240,7 +241,7 @@ int	v1_map_done = 0;
 
 				map->extension_size  = 0;
 
-				Insert_Extension_Map(&extension_map_list, map);
+				Insert_Extension_Map(extension_map_list, map);
 
 				v1_map_done = 1;
 			}
@@ -274,15 +275,15 @@ int	v1_map_done = 0;
 				case CommonRecordType: {
 					uint32_t map_id = flow_record->ext_map;
 					generic_exporter_t *exp_info = exporter_list[flow_record->exporter_sysid];
-					if ( extension_map_list.slot[map_id] == NULL ) {
+					if ( extension_map_list->slot[map_id] == NULL ) {
 						snprintf(string, 1024, "Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
 						string[1023] = '\0';
 					} else {
-						ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], 
+						ExpandRecord_v2( flow_record, extension_map_list->slot[flow_record->ext_map], 
 							exp_info ? &(exp_info->info) : NULL, &master_record);
 
 						// update number of flows matching a given map
-						extension_map_list.slot[map_id]->ref_count++;
+						extension_map_list->slot[map_id]->ref_count++;
 			
 						/* 
 			 			* insert hier your calls to your processing routine 
@@ -291,20 +292,21 @@ int	v1_map_done = 0;
 			 			*
 			 			*/
 						print_record(&master_record, string);
+						printf("%s\n", string);
 					}
-					printf("%s\n", string);
 	
 					} break;
 				case ExtensionMapType: {
 					extension_map_t *map = (extension_map_t *)flow_record;
 
-					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+					if ( Insert_Extension_Map(extension_map_list, map) ) {
 					 	// flush new map
 					} // else map already known and flushed
 
 					} break;
-				case ExporterRecordType:
-				case SamplerRecordype:
+				case ExporterInfoRecordType:
+				case ExporterStatRecordType:
+				case SamplerInfoRecordype:
 						// Silently skip exporter records
 					break;
 				default: {
@@ -322,7 +324,7 @@ int	v1_map_done = 0;
 	CloseFile(nffile);
 	DisposeFile(nffile);
 
-	PackExtensionMapList(&extension_map_list);
+	PackExtensionMapList(extension_map_list);
 
 } // End of process_data
 
@@ -369,12 +371,16 @@ int			c;
 		exit(255);
 	}
 
-	InitExtensionMaps(&extension_map_list);
+	extension_map_list = InitExtensionMaps(NEEDS_EXTENSION_LIST);
+	if ( !InitExporterList() ) {
+		exit(255);
+	}
 
 	SetupInputFileSequence(Mdirs, rfile, Rfile);
 
 	process_data();
 
+	FreeExtensionMaps(extension_map_list);
 
 	return 0;
 }

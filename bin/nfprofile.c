@@ -74,11 +74,15 @@
 /* externals */
 extern generic_exporter_t **exporter_list;
 
+#ifdef COMPAT15
+extern extension_descriptor_t extension_descriptor[];
+#endif
+
 /* Local Variables */
 static const char *nfdump_version = VERSION;
 
 
-extension_map_list_t extension_map_list;
+extension_map_list_t *extension_map_list;
 uint32_t is_anonymized;
 char Ident[IDENTLEN];
 
@@ -116,7 +120,6 @@ static void usage(char *name) {
 
 static void process_data(profile_channel_info_t *channels, unsigned int num_channels, time_t tslot, int do_xstat) {
 common_record_t	*flow_record;
-master_record_t	master_record;
 nffile_t		*nffile;
 FilterEngine_data_t	*engine;
 int 		i, j, done, ret ;
@@ -140,10 +143,6 @@ int	v1_map_done = 0;
 	is_anonymized = IP_ANONYMIZED(nffile);
 	strncpy(Ident, nffile->file_header->ident, IDENTLEN);
 	Ident[IDENTLEN-1] = '\0';
-
-	for ( j=0; j < num_channels; j++ ) {
-		(channels[j].engine)->nfrecord 		= (uint64_t *)&master_record;
-	}
 
 	done = 0;
 	while ( !done ) {
@@ -180,17 +179,25 @@ int	v1_map_done = 0;
 			if ( v1_map_done == 0 ) {
 				extension_map_t *map = malloc(sizeof(extension_map_t) + 2 * sizeof(uint16_t) );
 				if ( ! map ) {
-					perror("Memory allocation error");
+					LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 					exit(255);
 				}
 				map->type 	= ExtensionMapType;
 				map->size 	= sizeof(extension_map_t) + 2 * sizeof(uint16_t);
+				if (( map->size & 0x3 ) != 0 ) {
+					map->size += 4 - ( map->size & 0x3 );
+				}
+				
 				map->map_id = INIT_ID;
 				map->ex_id[0]  = EX_IO_SNMP_2;
 				map->ex_id[1]  = EX_AS_2;
 				map->ex_id[2]  = 0;
 
-				if ( Insert_Extension_Map(&extension_map_list, map) ) {
+				map->extension_size  = 0;
+				map->extension_size += extension_descriptor[EX_IO_SNMP_2].size;
+				map->extension_size += extension_descriptor[EX_AS_2].size;
+				
+				if ( Insert_Extension_Map(extension_map_list, map) ) {
 					int j;
 					for ( j=0; j < num_channels; j++ ) {
 						if ( channels[j].nffile != NULL) {
@@ -229,19 +236,24 @@ int	v1_map_done = 0;
 			switch ( flow_record->type ) { 
 					case CommonRecordType: {
 					generic_exporter_t *exp_info = exporter_list[flow_record->exporter_sysid];
-					if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
+					uint32_t map_id = flow_record->ext_map;
+					master_record_t	*master_record;
+
+					if ( extension_map_list->slot[map_id] == NULL ) {
 						LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
 						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 						continue;
 					} 
 	
-					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], 
-						exp_info ? &(exp_info->info) : NULL, &master_record);
+					master_record = &(extension_map_list->slot[map_id]->master_record);
+					ExpandRecord_v2( flow_record, extension_map_list->slot[flow_record->ext_map], 
+						exp_info ? &(exp_info->info) : NULL, master_record);
 
 					for ( j=0; j < num_channels; j++ ) {
 						int match;
 	
 						// apply profile filter
+						(channels[j].engine)->nfrecord 	= (uint64_t *)master_record;
 						engine = channels[j].engine;
 						match = (*engine->FilterEngine)(engine);
 	
@@ -252,12 +264,12 @@ int	v1_map_done = 0;
 						// filter was successful -> continue record processing
 	
 						// update statistics
-						UpdateStat(&channels[j].stat_record, &master_record);
+						UpdateStat(&channels[j].stat_record, master_record);
 						if ( channels[j].nffile ) 
-							UpdateStat(channels[j].nffile->stat_record, &master_record);
+							UpdateStat(channels[j].nffile->stat_record, master_record);
 	
 						if ( channels[j].xstat ) 
-							UpdateXStat(channels[j].xstat, &master_record);
+							UpdateXStat(channels[j].xstat, master_record);
 	
 						// do we need to write data to new file - shadow profiles do not have files.
 						// check if we need to flush the output buffer
@@ -272,7 +284,7 @@ int	v1_map_done = 0;
 				case ExtensionMapType: {
 					extension_map_t *map = (extension_map_t *)flow_record;
 	
-					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+					if ( Insert_Extension_Map(extension_map_list, map) ) {
 						int j;
 						for ( j=0; j < num_channels; j++ ) {
 							if ( channels[j].nffile != NULL ) {
@@ -663,7 +675,7 @@ time_t tslot;
 		exit(255);
 	}
 
-	InitExtensionMaps(&extension_map_list);
+	extension_map_list = InitExtensionMaps(NEEDS_EXTENSION_LIST);
 	if ( !InitExporterList() ) {
 		exit(255);
 	}
@@ -673,6 +685,8 @@ time_t tslot;
 	process_data(GetChannelInfoList(), num_channels, tslot, do_xstat);
 
 	CloseChannels(tslot, compress);
+
+	FreeExtensionMaps(extension_map_list);
 
 	return 0;
 }

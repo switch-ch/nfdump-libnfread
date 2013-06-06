@@ -90,6 +90,10 @@
 /* Externals */
 extern int yydebug;
 
+#ifdef COMPAT15
+extern extension_descriptor_t extension_descriptor[];
+#endif
+
 /* Global Variables */
 FilterEngine_data_t	*Engine;
 int 		verbose;
@@ -99,7 +103,7 @@ static const char *nfdump_version = VERSION;
 
 send_peer_t peer;
 
-extension_map_list_t extension_map_list;
+extension_map_list_t *extension_map_list;
 
 generic_exporter_t **exporter_list;
 
@@ -289,12 +293,19 @@ int	v1_map_done = 0;
 				}
 				map->type 	= ExtensionMapType;
 				map->size 	= sizeof(extension_map_t) + 2 * sizeof(uint16_t);
+				if (( map->size & 0x3 ) != 0 ) {
+					map->size += 4 - ( map->size & 0x3 );
+				}
 				map->map_id = INIT_ID;
 				map->ex_id[0]  = EX_IO_SNMP_2;
 				map->ex_id[1]  = EX_AS_2;
 				map->ex_id[2]  = 0;
 				
-				Insert_Extension_Map(&extension_map_list, map);
+				map->extension_size  = 0;
+				map->extension_size += extension_descriptor[EX_IO_SNMP_2].size;
+				map->extension_size += extension_descriptor[EX_AS_2].size;
+					
+				Insert_Extension_Map(extension_map_list, map);
 				v1_map_done = 1;
 			}
 
@@ -323,14 +334,14 @@ int	v1_map_done = 0;
 
 			switch ( flow_record->type ) {
 				case CommonRecordType: {
-					if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
+					if ( extension_map_list->slot[flow_record->ext_map] == NULL ) {
 						LogError("Corrupt data file. Missing extension map %u. Skip record.\n", flow_record->ext_map);
 						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
 						continue;
 					} 
 
 					// if no filter is given, the result is always true
-					ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], NULL, &master_record);
+					ExpandRecord_v2( flow_record, extension_map_list->slot[flow_record->ext_map], NULL, &master_record);
 
 					match = twin_start && (master_record.first < twin_start || master_record.last > twin_end) ? 0 : 1;
 
@@ -383,7 +394,7 @@ int	v1_map_done = 0;
 				case ExtensionMapType: {
 					extension_map_t *map = (extension_map_t *)flow_record;
 	
-					if ( Insert_Extension_Map(&extension_map_list, map) ) {
+					if ( Insert_Extension_Map(extension_map_list, map) ) {
 						// flush new map
 						
 					} // else map already known and flushed
@@ -595,7 +606,7 @@ time_t t_start, t_end;
 		exit(0);
 	}
 
-	InitExtensionMaps(&extension_map_list);
+	extension_map_list = InitExtensionMaps(NEEDS_EXTENSION_LIST);
 
 	SetupInputFileSequence(NULL,rfile, NULL);
 
@@ -605,6 +616,8 @@ time_t t_start, t_end;
 	}
 
 	send_data(rfile, t_start, t_end, count, delay, confirm, netflow_version);
+
+	FreeExtensionMaps(extension_map_list);
 
 	return 0;
 }

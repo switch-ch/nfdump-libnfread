@@ -130,11 +130,15 @@ int i, id, map_index;
 int extension_size;
 uint16_t	map_size;
 
+	extension_size   = 0;
 	// prepare v5 extension map
-	v5_extension_info.map   = NULL;
-	extension_size	 = 0;
-	map_size 		 = 0;
+	v5_extension_info.map		   = NULL;
+	v5_extension_info.next		   = NULL;
+	v5_extension_info.offset_cache = NULL;
+	v5_extension_info.ref_count	   = 0;
 
+	// default map - 0 extensions
+	map_size 		 = sizeof(extension_map_t);
 	i=0;
 	while ( (id = v5_full_mapp[i]) != 0  ) {
 		if ( extension_descriptor[id].enabled ) {
@@ -145,11 +149,11 @@ uint16_t	map_size;
 	}
 	// extension_size contains the sum of all optional extensions
 	// caculate the record size without counters!
-	v5_output_record_base_size = COMMON_RECORD_DATA_SIZE + 8 + extension_size;	// + 8 for 2 x IPv4 addr
-
+	v5_output_record_base_size = COMMON_RECORD_DATA_SIZE + 8 + extension_size;  // + 8 for 2 x IPv4 addr
+ 
 	// now the full extension map size
-	map_size 	+= sizeof(extension_map_t);
-
+	map_size	+= sizeof(extension_map_t);
+ 
 	// align 32 bits
 	if ( ( map_size & 0x3 ) != 0 )
 		map_size += 2;
@@ -163,7 +167,7 @@ uint16_t	map_size;
 	v5_extension_info.map->type 	  	  = ExtensionMapType;
 	v5_extension_info.map->size 	  	  = map_size;
 	v5_extension_info.map->map_id 	  	  = INIT_ID;		
-	v5_extension_info.map->extension_size = extension_size;		
+	v5_extension_info.map->extension_size = extension_size;
 
 	// see netflow_v5_v7.h for extension map description
 	map_index = 0;

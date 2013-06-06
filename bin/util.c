@@ -120,6 +120,11 @@ void xsleep(long sec) {
 	select(0, NULL, NULL, NULL, &tv);
 }
 
+void EndLog() {
+	if ( use_syslog )
+		closelog();
+} // End of CloseLog
+
 int InitLog(char *name, char *facility) {
 int i;
 char *logname;
@@ -169,7 +174,8 @@ char string[512];
 		dbg_printf("%s\n", string);
 	} else {
 		va_start(var_args, format);
-		vfprintf(stderr, format, var_args);
+		vsnprintf(string, 511, format, var_args);
+		fprintf(stderr, "%s\n", string);
 		va_end(var_args);
 	}
 	
@@ -187,7 +193,8 @@ char string[512];
 		dbg_printf("%s\n", string);
 	} else {
 		va_start(var_args, format);
-		vfprintf(stderr, format, var_args);
+		vsnprintf(string, 511, format, var_args);
+		fprintf(stderr, "%s\n", string);
 		va_end(var_args);
 	}
 	

@@ -58,7 +58,7 @@ typedef struct FlowTableRecord {
 	// flow counter parameters for FLOWS, INPACKETS, INBYTES, OUTPACKETS, OUTBYTES
 	uint64_t	counter[5];
 
-	extension_map_t	*map_ref;
+	extension_info_t	   *map_info_ref;
 	exporter_info_record_t *exp_ref;
 	// flow record follows
 	// flow data size may vary depending on the number of extensions
@@ -135,9 +135,9 @@ char *VerifyStat(uint16_t Aggregate_Bits);
 
 int SetStat(char *str, int *element_stat, int *flow_stat);
 
-void InsertFlow(common_record_t *raw_record, master_record_t *flow_record);
+void InsertFlow(common_record_t *raw_record, master_record_t *flow_record, extension_info_t *extension_info);
 
-void AddFlow(common_record_t *raw_record, master_record_t *flow_record );
+void AddFlow(common_record_t *raw_record, master_record_t *flow_record, extension_info_t *extension_info );
 
 int SetBidirAggregation( void );
 

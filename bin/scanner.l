@@ -184,6 +184,7 @@ ignore|invalid|create|add|term|delete|deny	{ 	/* NSEL filter */
 denied			{ return DENIED; 	/* NSEL filter */ }
 xevent			{ return XEVENT; 	/* NSEL filter */ }
 xip				{ return XIP; 		/* NSEL filter */ }
+xnet			{ return XNET; 		/* NSEL filter */ }
 xport			{ return XPORT; 	/* NSEL filter */ }
 acl				{ return ACL; 		/* NSEL filter */ }
 ace				{ return ACE; 		/* NSEL filter */ }

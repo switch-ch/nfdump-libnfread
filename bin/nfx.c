@@ -45,7 +45,6 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
-#include <syslog.h>
 #include <stdarg.h>
 
 #ifdef HAVE_STDINT_H
@@ -141,15 +140,17 @@ uint32_t Max_num_extensions;
 
 void FixExtensionMap(extension_map_t *map);
 
-void InitExtensionMaps(extension_map_list_t *extension_map_list ) {
+extension_map_list_t *InitExtensionMaps(int AllocateList) {
+extension_map_list_t *list = NULL;
 int i;
 
-	if ( extension_map_list ) {
-		memset((void *)extension_map_list->slot, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
-		memset((void *)extension_map_list->page, 0, MAX_EXTENSION_MAPS * sizeof(extension_info_t *));
-
-		extension_map_list->next_free = 0;
-		extension_map_list->max_used  = -1;
+	if ( AllocateList ) {
+		list = (extension_map_list_t *)calloc(1, sizeof(extension_map_list_t));
+		if ( !list ) {
+			LogError("calloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+			exit(255);
+		}
+		list->last_map = &list->map_list;
 	}
 
 	Max_num_extensions = 0;
@@ -167,45 +168,31 @@ int i;
 		i++;
 	}
 #endif
+
+	return list;
+
 } // End of InitExtensionMaps
 
 void FreeExtensionMaps(extension_map_list_t *extension_map_list) {
-int	i;
+extension_info_t *l;
 
 	if ( extension_map_list == NULL ) 
 		return;
 	
-	// free all maps
-	for ( i=0; i <= extension_map_list->max_used; i++ ) {
-		if ( extension_map_list->slot[i] ) {
-			if ( extension_map_list->slot[i]->map ) {
-				free(extension_map_list->slot[i]->map);
-				extension_map_list->slot[i]->map = NULL;
-			}
-			free(extension_map_list->slot[i]);
-			extension_map_list->slot[i] = NULL;
-		}
-		
+	// free all extension infos
+	l = extension_map_list->map_list;
+	while ( l ) {
+		extension_info_t *tmp = l;
+		l = l->next;
+		free(tmp->map);
+		free(tmp);
 	}
-
-	// free all paged maps
-	for ( i=0; i < extension_map_list->next_free; i++ ) {
-		if ( extension_map_list->page[i] ) {
-			if ( extension_map_list->page[i]->map ) {
-				free(extension_map_list->page[i]->map);
-				extension_map_list->page[i]->map = NULL;
-			}
-			free(extension_map_list->page[i]);
-			extension_map_list->page[i] = NULL;
-		}
-	}
-
-	InitExtensionMaps(extension_map_list);
+	free(extension_map_list);
 
 } // End of FreeExtensionMaps
 
 int Insert_Extension_Map(extension_map_list_t *extension_map_list, extension_map_t *map) {
-uint32_t next_free = extension_map_list->next_free;
+extension_info_t *l;
 uint16_t map_id;
 
 	map_id = map->map_id == INIT_ID ? 0 : map->map_id & EXTENSION_MAP_MASK;
@@ -216,16 +203,17 @@ uint16_t map_id;
 #endif
 	// is this slot free
 	if ( extension_map_list->slot[map_id] ) {
-		int i, map_found;
-		dbg_printf("Map %d already exists\n", map_id);
+		int i;
+		dbg_printf("Extension info in slot %d already exists: 0x%llu\n", map_id, (long long unsigned)extension_map_list->slot[map_id]);
 		// no - check if same map already in slot
 		if ( extension_map_list->slot[map_id]->map->size == map->size ) {
 			// existing map and new map have the same size 
-			dbg_printf("New map same size:\n");
+			dbg_printf("New map has same size, as existing:\n");
 
 			// we must compare the maps
 			i = 0;
-			while ( extension_map_list->slot[map_id]->map->ex_id[i] && (extension_map_list->slot[map_id]->map->ex_id[i] == map->ex_id[i]) ) 
+			while ( extension_map_list->slot[map_id]->map->ex_id[i] && 
+					(extension_map_list->slot[map_id]->map->ex_id[i] == map->ex_id[i]) ) 
 				i++;
 
 			// if last entry == 0 => last map entry => maps are the same
@@ -234,167 +222,111 @@ uint16_t map_id;
 				// same map
 				return 0;
 			} 
-			dbg_printf("Different map => continue\n");
 		}
+		dbg_printf("Different map => continue\n");
+	} 
+#ifdef DEVEL
+	 else
+		printf("Extension info in slot %d free\n", map_id);
+#endif
 
-		dbg_printf("Search for map in extension page\n");
-		map_found = -1;
-		// new map is different but has same id - search for map in page list
-		for ( i = 0 ; i < next_free; i++ ) {
-			int j;
-			j = 0;
-			if ( extension_map_list->page[i]->map->size == map->size ) {
-				while ( extension_map_list->page[i]->map->ex_id[j] && (extension_map_list->page[i]->map->ex_id[j] == map->ex_id[j]) ) 
-					j++;
-			}
-			if ( extension_map_list->page[i]->map->ex_id[j] == 0 ) {
-				dbg_printf("Map found in page slot %i\n", i);
-				map_found = i;
-			}
-		}
-		if ( map_found >= 0 ) {
-			extension_info_t *tmp;
-			dbg_printf("Move map from page slot %i to slot %i\n", map_found ,map_id);
-	
-			// exchange the two maps
-			tmp = extension_map_list->slot[map_id];
-			extension_map_list->slot[map_id] = extension_map_list->page[map_found];
-			extension_map_list->slot[map_id]->map->map_id = map_id;
-
-			extension_map_list->page[map_found] = tmp;
-			extension_map_list->page[map_found]->map->map_id = map_found;
-			return 1;
-			
-		} else {
-			dbg_printf("Map not found in extension page\n");
-			// map not found - move it to the extension page to a currently free slot
-			if ( next_free < MAX_EXTENSION_MAPS ) {
-				dbg_printf("Move existing map from slot %d to page slot %d\n",map_id, next_free);
-				extension_map_list->page[next_free]   	= extension_map_list->slot[map_id];
-				extension_map_list->page[next_free]->map->map_id = next_free;
-				extension_map_list->slot[map_id] 		= NULL;
-				// ready to fill new slot
-			} else {
-				fprintf(stderr, "Extension map list exhausted - too many extension maps ( > %d ) to process;\n", MAX_EXTENSION_MAPS);
-				exit(255);
+	dbg_printf("Search if extension info exists in extension page_list\n");
+	// new map is different but has same id - search for map in page list
+	for ( l = extension_map_list->map_list ; l != NULL ; l = l->next) {
+		int i = 0;
+		if ( l->map->size == map->size ) {
+			while ( l->map->ex_id[i] && (l->map->ex_id[i] == map->ex_id[i]) ) 
+				i++;
+			if ( l->map->ex_id[i] == 0 ) {
+				dbg_printf("Map found: 0x%llu\n", (long long unsigned)l);
+				break;
 			}
 		}
 	}
 
-	FixExtensionMap(map);
+	// if found l is our extension
+	if ( !l ) {
+		// no extension found in page_list
+		dbg_printf("Map not found in extension page list\n");
+		l = (extension_info_t *)malloc(sizeof(extension_info_t));
+		if ( !l ) {
+			fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+			exit(255);
+		}
+		l->ref_count 	= 0;
+		l->next 		= NULL;
+		memset((void *)&l->master_record, 0, sizeof(master_record_t));
 
-	// add new entry to slot
-	extension_map_list->slot[map_id]	= (extension_info_t *)calloc(1,sizeof(extension_info_t));
-	if ( !extension_map_list->slot[map_id] ) {
-		fprintf(stderr, "calloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		exit(255);
-	}
-	extension_map_list->slot[map_id]->map   = (extension_map_t *)malloc((ssize_t)map->size);
-	if ( !extension_map_list->slot[map_id]->map ) {
-		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		exit(255);
-	}
-	memcpy((void *)extension_map_list->slot[map->map_id]->map, (void *)map, map->size);
+		l->map   = (extension_map_t *)malloc((ssize_t)map->size);
+		if ( !l->map ) {
+			fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+			exit(255);
+		}
+		memcpy((void *)l->map, (void *)map, map->size);
 
-	extension_map_list->slot[map_id]->ref_count = 0;
+		// append new extension to list
+		*(extension_map_list->last_map) = l;
+		extension_map_list->last_map 	= &l->next;
+
+		// Sanity check
+		FixExtensionMap(map);
+	}
+
+	// l is now our valid extension
+	dbg_printf("Insert extension into slot %i: 0x%llu\n\n", map_id, (long long unsigned)l);
+
+	// remove map from lookup list, if it exists
+	if ( extension_map_list->slot[map_id] ) 
+		extension_map_list->slot[map_id]->map->map_id = 0;
+
+	// place existing extension_info into lookup list
+	extension_map_list->slot[map_id] = l;
+	l->map->map_id = map_id;
 
 	if ( map_id > extension_map_list->max_used ) {
 		extension_map_list->max_used = map_id;
 	}
 
-	// Update next_free page slot, if it's used now
-	while ( extension_map_list->page[next_free] && (next_free < MAX_EXTENSION_MAPS))
-		next_free++;
-	extension_map_list->next_free = next_free;
-
-	// if all slots are exhausted next_free is now MAX_EXTENSION_MAPS. The next time an empty slot is needed, it will properly fail.
-	dbg_printf("Installed map in slot %d. Next free page slot: %d\n", map_id, next_free);
-	
-	//map changed
+	// extension changed
 	return 1;
 
 } // End of Insert_Extension_Map
 
 void PackExtensionMapList(extension_map_list_t *extension_map_list) {
+extension_info_t *l;
 int i, free_slot;
 
 	dbg_printf("Pack extensions maps\n");
 	// compact extension map list - close gaps
-	free_slot = -1;
+
+	// clear current list
 	for ( i=0; i <= extension_map_list->max_used; i++ ) {
-		dbg_printf("Check slot: %i, ref: %u\n", i, extension_map_list->slot[i] ? extension_map_list->slot[i]->ref_count : 0);
-		if ( extension_map_list->slot[i] != NULL && extension_map_list->slot[i]->ref_count == 0 ) {
-			// Destroy slot, if no flows referenced this map
-			free(extension_map_list->slot[i]->map);
-			free(extension_map_list->slot[i]);
-			extension_map_list->slot[i] = NULL;
-			dbg_printf("Free slot: %i\n", i);
-		}
-		if ( extension_map_list->slot[i] == NULL && free_slot == -1 ) {
-			// remember this free slot
-			dbg_printf("Remember free slot at %i\n", i);
-			free_slot = i;
-		} else if ( free_slot != -1 && extension_map_list->slot[i] != NULL ) {
-			int j;
-			// move this slot down to compact the list
-			extension_map_list->slot[free_slot] = extension_map_list->slot[i];
-			extension_map_list->slot[free_slot]->map->map_id = free_slot;
-			extension_map_list->slot[i] = NULL;
-			dbg_printf("Move slot %i down to %i\n", i, free_slot);
-
-			// search for next free slot - latest slot[i] is free now
-			for ( j = free_slot + 1; j <= i; j++ ) {
-				if ( extension_map_list->slot[j] == NULL ) {
-					free_slot = j;
-					dbg_printf("Next free slot found at %i\n", free_slot);
-					break;
-				}
-			}
-		} else {
-			dbg_printf("Fell through\n");
-		}
+		extension_map_list->slot[i] = NULL;
 	}
 
-	// get max index - set index to map
-	i = 0;
-	while ( extension_map_list->slot[i] != NULL && i < MAX_EXTENSION_MAPS ) {
-		dbg_printf("Slot: %i, ref: %u\n", i, extension_map_list->slot[i]->ref_count);
-		i++;
-	}
-
-	if ( i == MAX_EXTENSION_MAPS ) {
-		// ups! - should not really happen - so we are done for now
-		if ( extension_map_list->next_free == 0 ) {
-			// map slots full but no maps im page list - we are done
-			return;
+	// hangle though list
+	free_slot = 0;
+	l = extension_map_list->map_list;
+	while ( l ) {
+		dbg_printf("Check extension ref count: %u -> ", l->ref_count);
+		if ( l->ref_count ) {
+			// extension is referenced - insert into slot
+			dbg_printf("slot %u\n", free_slot);
+		 	extension_map_list->slot[free_slot] = l;
+			l->map->map_id = free_slot++;
+			l = l->next;
 		} else {
-			// we can't handle this event for now - too many maps - but MAX_EXTENSION_MAPS should be more than enough
-			fprintf(stderr, "Critical error in %s line %d: %s\n", __FILE__, __LINE__, "Out of maps!" );
+			// extension can be removed - not referenced
+			l = l->next;
+			dbg_printf("Skipped\n");
+		}
+		if ( free_slot == MAX_EXTENSION_MAPS ) {
+			fprintf(stderr, "Critical error in %s line %d: %s\n", __FILE__, __LINE__, "Out of extension slots!" );
 			exit(255);
 		}
 	}
 
 	// this points to the next free slot
-	free_slot = i;
-
-	for ( i=0; i < extension_map_list->next_free; i++ ) {
-		if ( free_slot < MAX_EXTENSION_MAPS ) {
-			if ( extension_map_list->page[i]->ref_count ) {
-				dbg_printf("Move page %u to slot %u\n", i, free_slot);
-				extension_map_list->slot[free_slot] = extension_map_list->page[i];
-				extension_map_list->slot[free_slot]->map->map_id = free_slot;
-				extension_map_list->page[i] = NULL;
-				free_slot++;
-			} else {
-				dbg_printf("Skip page %u. Zero ref count \n", i);
-			}
-		} else {
-			// we can't handle this event for now, but should not happen anyway
-			fprintf(stderr, "Critical error in %s line %d: %s\n", __FILE__, __LINE__, "Out of maps!" );
-			exit(255);
-		}
-	}
-
 	extension_map_list->max_used = free_slot - 1;
 	dbg_printf("Packed maps: %i\n", free_slot);
 
@@ -420,7 +352,7 @@ char *p, *q, *s;
 		exit(255);
 	}
 
-	s = (char *)malloc(strlen(options));
+	s = (char *)malloc(strlen(options)+1);
 	if ( !s ) {
 		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		exit(255);
@@ -517,7 +449,7 @@ char *p, *q, *s;
 		}
 		if ( extension_descriptor[i].enabled ) {
 			dbg_printf("Add extension: %s\n", extension_descriptor[i].description);
-			syslog(LOG_INFO, "Add extension: %s", extension_descriptor[i].description);
+			LogInfo("Add extension: %s\n", extension_descriptor[i].description);
 		}
 	}
 
@@ -559,15 +491,15 @@ int i, failed, extension_size, max_elements;
 	max_elements = (map->size - sizeof(extension_map_t)) / sizeof(uint16_t);
 	extension_size = 0;
 	i=0;
-    while (map->ex_id[i] && i <= max_elements) {
-        int id = map->ex_id[i];
+	while (map->ex_id[i] && i <= max_elements) {
+		int id = map->ex_id[i];
 		if ( id > Max_num_extensions ) {
 			printf("Verify map id %i: ERROR: element id %i out of range [%i]!\n", map->map_id, id, Max_num_extensions);
 			failed = 1;
 		}
-        extension_size += extension_descriptor[id].size;
-        i++;
-    }
+		extension_size += extension_descriptor[id].size;
+		i++;
+	}
 
 	if ( (extension_size != map->extension_size ) ) {
 		printf("Verify map id %i: ERROR extension size: Expected %i, Map reports: %i!\n",  map->map_id,
@@ -584,6 +516,9 @@ int i, failed, extension_size, max_elements;
 
 } // End of VerifyExtensionMap
 
+/*
+ * Sanity check of map
+ */
 void FixExtensionMap(extension_map_t *map) {
 int i, extension_size, max_elements;
 
@@ -600,14 +535,14 @@ int i, extension_size, max_elements;
 	max_elements = (map->size - sizeof(extension_map_t)) / sizeof(uint16_t);
 	extension_size = 0;
 	i=0;
-    while (map->ex_id[i] && i <= max_elements) {
-        int id = map->ex_id[i];
+	while (map->ex_id[i] && i <= max_elements) {
+		int id = map->ex_id[i];
 		if ( id > Max_num_extensions ) {
 			printf("PANIC! - Verify map id %i: ERROR: element id %i out of range [%i]!\n", map->map_id, id, Max_num_extensions);
 		}
-        extension_size += extension_descriptor[id].size;
-        i++;
-    }
+		extension_size += extension_descriptor[id].size;
+		i++;
+	}
 
 	// silently fix extension size bug of nfdump <= 1.6.2 ..
 	if ( (extension_size != map->extension_size ) ) {
@@ -623,7 +558,6 @@ int i, extension_size, max_elements;
 	}
 
 } // End of FixExtensionMap
-
 
 void DumpExMaps(char *filename) {
 int done;
@@ -677,6 +611,7 @@ uint64_t total_bytes;
 
 		flow_record = (common_record_t *)nffile->buff_ptr;
 		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
+
 			if ( flow_record->type == ExtensionMapType ) {
 				extension_map_t *map = (extension_map_t *)flow_record;
 				VerifyExtensionMap(map);

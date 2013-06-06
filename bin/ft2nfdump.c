@@ -93,7 +93,9 @@ extension_info_t *GenExtensionMap(struct ftio *ftio);
 
 int flows2nfdump(struct ftio *ftio, extension_info_t *extension_info, int extended, uint32_t limitflows);
 
+#define NEED_PACKRECORD
 #include "nffile_inline.c"
+#undef NEED_PACKRECORD
 
 void usage(char *name) {
 		printf("usage %s [options] \n"
@@ -123,7 +125,7 @@ int	i;
 		return NULL;
 	}
 
-	InitExtensionMaps(NULL);
+	InitExtensionMaps(NO_EXTENSION_LIST);
 	extension_info = (extension_info_t *)malloc(sizeof(extension_info_t));
 	if ( !extension_info  ) {
 		fprintf(stderr, "malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
@@ -166,7 +168,7 @@ int	i;
 	}
 
 	extension_info->map->ex_id[i++] = 0;
-	extension_info->map->size 		= sizeof(extension_map_t) + i * sizeof(uint16_t);
+	extension_info->map->size       = sizeof(extension_map_t) + i * sizeof(uint16_t);
 
 	// align 32bits
 	if (( extension_info->map->size & 0x3 ) != 0 ) {

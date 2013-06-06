@@ -77,7 +77,7 @@ static extension_info_t v1_extension_info;		// common for all v1 records
 static uint16_t v1_output_record_size;
 
 // All required extension to save full v1 records
-static uint16_t v1_full_mapp[] = { EX_IO_SNMP_2, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, EX_RECEIVED, 0 };
+static uint16_t v1_full_map[] = { EX_IO_SNMP_2, EX_NEXT_HOP_v4, EX_ROUTER_IP_v4, EX_RECEIVED, 0 };
 
 typedef struct v1_block_s {
 	uint32_t	srcaddr;
@@ -119,12 +119,16 @@ int extension_size;
 uint16_t	map_size;
 
 	// prepare v1 extension map
-	v1_extension_info.map   = NULL;
-	extension_size	 = 0;
-	map_size 		 = 0;
+	v1_extension_info.map		   = NULL;
+	v1_extension_info.next		   = NULL;
+	v1_extension_info.offset_cache = NULL;
+	v1_extension_info.ref_count	= 0;
 
+	extension_size  = 0;
+	// default map - 0 extensions
+	map_size 		 = sizeof(extension_map_t);
 	i=0;
-	while ( (id = v1_full_mapp[i]) != 0  ) {
+	while ( (id = v1_full_map[i]) != 0  ) {
 		if ( extension_descriptor[id].enabled ) {
 			extension_size += extension_descriptor[id].size;
 			map_size += sizeof(uint16_t);
@@ -133,30 +137,31 @@ uint16_t	map_size;
 	}
 	// extension_size contains the sum of all optional extensions
 	// caculate the record size 
-	v1_output_record_size = COMMON_RECORD_DATA_SIZE + V1_BLOCK_DATA_SIZE + extension_size;	
-
+	v1_output_record_size = COMMON_RECORD_DATA_SIZE + V1_BLOCK_DATA_SIZE + extension_size;  
+ 
 	// now the full extension map size
-	map_size 	+= sizeof(extension_map_t);
-
+	map_size	+= sizeof(extension_map_t);
+ 
 	// align 32 bits
 	if ( ( map_size & 0x3 ) != 0 )
 		map_size += 2;
 
-	// Create a generic v1 extension map
+	// Create a generic netflow v1 extension map
 	v1_extension_info.map = (extension_map_t *)malloc((size_t)map_size);
 	if ( !v1_extension_info.map ) {
 		syslog(LOG_ERR, "Process_v1: malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
 		return 0;
 	}
+
 	v1_extension_info.map->type 	  	  = ExtensionMapType;
 	v1_extension_info.map->size 	  	  = map_size;
 	v1_extension_info.map->map_id 	  	  = INIT_ID;		
-	v1_extension_info.map->extension_size = extension_size;		
+	v1_extension_info.map->extension_size = extension_size;  
 
 	// see netflow_v1.h for extension map description
 	map_index = 0;
 	i=0;
-	while ( (id = v1_full_mapp[i]) != 0 ) {
+	while ( (id = v1_full_map[i]) != 0 ) {
 		if ( extension_descriptor[id].enabled )
 			v1_extension_info.map->ex_id[map_index++] = id;
 		i++;

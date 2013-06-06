@@ -70,7 +70,6 @@
 extern int hash_hit;
 extern int hash_miss;
 extern int hash_skip;
-extern extension_map_list_t extension_map_list;
 
 struct flow_element_s {
 	uint32_t	offset0;
@@ -441,7 +440,7 @@ static inline StatRecord_t *stat_hash_insert(uint64_t *value, uint8_t prot, int 
 static void Expand_StatTable_Blocks(int hash_num);
 
 inline void PrintSortedFlowcache(SortElement_t *SortList, uint32_t maxindex, int limit_count, int GuessFlowDirection, 
-	printer_t print_record, int tag, int ascending );
+	printer_t print_record, int tag, int ascending, extension_map_list_t *extension_map_list );
 
 static void PrintStatLine(stat_record_t	*stat, StatRecord_t *StatData, int type, int order_proto, int tag);
 
@@ -1306,7 +1305,7 @@ struct tm	*tbuff;
 
 } // End of PrintCvsStatLine
 
-void PrintFlowTable(printer_t print_record, uint32_t limitflows, int tag, int GuessDir) {
+void PrintFlowTable(printer_t print_record, uint32_t limitflows, int tag, int GuessDir, extension_map_list_t *extension_map_list) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 master_record_t		*aggr_record_mask;
@@ -1369,7 +1368,7 @@ char				*string;
  			heapSort(SortList, c, 0);
 
 		PrintSortedFlowcache(SortList, maxindex, limitflows, GuessDir, 
-			print_record, tag, order_mode[PrintOrder].direction);
+			print_record, tag, order_mode[PrintOrder].direction, extension_map_list);
 
 /*
 		if ( limitflows && limitflows < maxindex )
@@ -1439,10 +1438,10 @@ char				*string;
 				}
 
 				raw_record = &(r->flowrecord);
-				map_id = r->map_ref->map_id;
+				map_id = r->map_info_ref->map->map_id;
 
-				flow_record = &(extension_map_list.slot[map_id]->master_record);
-				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
+				flow_record = &(extension_map_list->slot[map_id]->master_record);
+				ExpandRecord_v2( raw_record, extension_map_list->slot[map_id], r->exp_ref, flow_record);
 				flow_record->dPkts 		= r->counter[INPACKETS];
 				flow_record->dOctets 	= r->counter[INBYTES];
 				flow_record->out_pkts 	= r->counter[OUTPACKETS];
@@ -1473,7 +1472,7 @@ char				*string;
 
 } // End of PrintFlowTable
 
-void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output) {
+void PrintFlowStat(char *record_header, printer_t print_record, int topN, int tag, int quiet, int cvs_output, extension_map_list_t *extension_map_list) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 master_record_t		*aggr_record_mask;
@@ -1551,7 +1550,7 @@ uint32_t			maxindex, c;
 			printf("%s\n", record_header);
 	}
 
-	PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING);
+	PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING, extension_map_list);
 
 	// process all the remaining stats, if requested
 	for ( order_index++ ; order_index<NumOrders; order_index++ ) {
@@ -1577,7 +1576,7 @@ uint32_t			maxindex, c;
 				if ( !record_header ) 
 					printf("%s\n", record_header);
 			}
-			PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING);
+			PrintSortedFlowcache(SortList, maxindex, topN, 0, print_record, tag, DESCENDING, extension_map_list);
 
 		}
 	}
@@ -1586,7 +1585,7 @@ uint32_t			maxindex, c;
 } // End of PrintFlowStat
 
 inline void PrintSortedFlowcache(SortElement_t *SortList, uint32_t maxindex, int limit_count, int GuessFlowDirection, 
-	printer_t print_record, int tag, int ascending ) {
+	printer_t print_record, int tag, int ascending, extension_map_list_t *extension_map_list ) {
 hash_FlowTable *FlowTable;
 master_record_t		*aggr_record_mask;
 int	i, max;
@@ -1611,10 +1610,10 @@ int	i, max;
 
 		r = (FlowTableRecord_t *)(SortList[j].record);
 		raw_record = &(r->flowrecord);
-		map_id = r->map_ref->map_id;
+		map_id = r->map_info_ref->map->map_id;
 
-		flow_record = &(extension_map_list.slot[map_id]->master_record);
-		ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
+		flow_record = &(extension_map_list->slot[map_id]->master_record);
+		ExpandRecord_v2( raw_record, extension_map_list->slot[map_id], r->exp_ref, flow_record);
 		flow_record->dPkts 		= r->counter[INPACKETS];
 		flow_record->dOctets 	= r->counter[INBYTES];
 		flow_record->out_pkts 	= r->counter[OUTPACKETS];

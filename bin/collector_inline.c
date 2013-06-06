@@ -54,7 +54,7 @@ char			as[100];
 #ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
 			if (ss->ss_len != sizeof(struct sockaddr_in) ) {
 				// malformed struct
-				syslog(LOG_ERR, "Malformed IPv4 socket struct in '%s', line '%d'", __FILE__, __LINE__ );
+				LogError("Malformed IPv4 socket struct in '%s', line '%d'", __FILE__, __LINE__ );
 				return NULL;
 			}
 #endif
@@ -69,7 +69,7 @@ char			as[100];
 #ifdef HAVE_STRUCT_SOCKADDR_STORAGE_SS_LEN
 			if (ss->ss_len != sizeof(struct sockaddr_in6) ) {
 				// malformed struct
-				syslog(LOG_ERR, "Malformed IPv6 socket struct in '%s', line '%d'", __FILE__, __LINE__ );
+				LogError("Malformed IPv6 socket struct in '%s', line '%d'", __FILE__, __LINE__ );
 				return NULL;
 			}
 #endif
@@ -84,7 +84,7 @@ char			as[100];
 			ip.v6[1] = 0;
 			ptr   = NULL;
 
-			syslog(LOG_ERR, "Unknown sa fanily: %d in '%s', line '%d'", ss->ss_family, __FILE__, __LINE__ );
+			LogError("Unknown sa fanily: %d in '%s', line '%d'", ss->ss_family, __FILE__, __LINE__ );
 			return NULL;
 	}
 
@@ -115,7 +115,7 @@ char			as[100];
 		strncpy(as, "<unknown>", 99);
 
 	as[99] = '\0';
-	syslog(LOG_ERR, "Unknown flow source: '%s'" , as);
+	LogError("Unknown flow source: '%s'" , as);
 
 	return NULL;
 

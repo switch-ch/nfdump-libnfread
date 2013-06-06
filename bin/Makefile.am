@@ -41,6 +41,9 @@ anon = panonymizer.c panonymizer.h rijndael.c rijndael.h
 collector = collector.c collector.h
 nfv1 = netflow_v1.c netflow_v1.h
 nfv9 = netflow_v9.c netflow_v9.h
+pcaproc = pcaproc.c pcaproc.h flowtree.c flowtree.h
+content = content_dns.c content_dns.h
+netflow_pcap = netflow_pcap.c netflow_pcap.h
 ipfix = ipfix.c ipfix.h
 nfv5v7 = netflow_v5_v7.c netflow_v5_v7.h
 nfstatfile = nfstatfile.c nfstatfile.h
@@ -70,10 +73,22 @@ nfcapd_SOURCES = nfcapd.c \
 	$(common) $(util) $(filelzo) $(nflist) $(nfstatfile) $(launch) \
 	$(nfnet) $(collector) $(nfv1) $(nfv5v7) $(nfv9) $(ipfix) $(bookkeeper) $(expire)
 
+nfpcapd_SOURCES = nfpcapd.c \
+	$(pcaproc) $(netflow_pcap) \
+	$(common) $(util) $(filelzo) $(nflist) $(nfstatfile) $(launch) \
+	$(nfnet) $(collector) $(bookkeeper) $(expire) $(content)
+
 if READPCAP
 nfcapd_CFLAGS = -DPCAP
 nfcapd_SOURCES += pcap_reader.c pcap_reader.h
-nfcapd_LDADD = -lpcap
+nfcapd_LDADD = -lpcap 
+endif
+
+if BUILDNFPCAPD
+bin_PROGRAMS += nfpcapd
+nfpcapd_CFLAGS = -D_BSD_SOURCE
+nfpcapd_LDADD = -lpcap 
+nfpcapd_LDFLAGS = -pthread
 endif
 
 sfcapd_SOURCES = sfcapd.c sflow.c sflow.h sflow_proto.h \
@@ -98,7 +113,7 @@ nfexpire_SOURCES = nfexpire.c \
 	$(bookkeeper) $(expire) $(util) $(nfstatfile)
 nfexpire_LDADD = @FTS_OBJ@
 
-nftest_SOURCES = nftest.c $(common) $(filter) $(filelzo)
+nftest_SOURCES = nftest.c $(common) $(util) $(filter) $(filelzo)
 nftest_DEPENDENCIES = nfgen
 
 if FT2NFDUMP

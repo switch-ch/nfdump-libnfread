@@ -46,9 +46,13 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required);
 
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required);
 
+static inline void CopyV6IP(uint32_t *dst, uint32_t *src);
+
 static inline void ExpandRecord_v2(common_record_t *input_record, extension_info_t *extension_info, exporter_info_record_t *exporter_info, master_record_t *output_record );
 
+#ifdef NEED_PACKRECORD
 static void PackRecord(master_record_t *master_record, nffile_t *nffile);
+#endif
 
 static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 
@@ -73,6 +77,13 @@ static inline int CheckBufferSpace(nffile_t *nffile, size_t required) {
 	return 1;
 } // End of CheckBufferSpace
 
+// Use 4 uint32_t copy cycles, as SPARC CPUs brak
+static inline void CopyV6IP(uint32_t *dst, uint32_t *src) {
+	dst[0] = src[0];
+	dst[1] = src[1];
+	dst[2] = src[2];
+	dst[3] = src[3];
+} // End of CopyV6IP
 
 /*
  * Expand file record into master record for further processing
@@ -108,7 +119,9 @@ void		*p = (void *)input_record;
 	// Required extension 1 - IP addresses
 	if ( (input_record->flags & FLAG_IPV6_ADDR) != 0 )	{ // IPv6
 		// IPv6
-		memcpy((void *)output_record->v6.srcaddr, p, 4 * sizeof(uint64_t));	
+		// keep compiler happy
+		// memcpy((void *)output_record->v6.srcaddr, p, 4 * sizeof(uint64_t));	
+		memcpy((void *)output_record->ip_union._ip_64.addr, p, 4 * sizeof(uint64_t));	
 		p = (void *)((pointer_addr_t)p + 4 * sizeof(uint64_t));
 	} else { 	
 		// IPv4
@@ -204,8 +217,7 @@ void		*p = (void *)input_record;
 				} break;
 			case EX_NEXT_HOP_v6: {
 				tpl_ext_10_t *tpl = (tpl_ext_10_t *)p;
-				output_record->ip_nexthop.v6[0] = tpl->nexthop[0];
-				output_record->ip_nexthop.v6[1] = tpl->nexthop[1];
+				CopyV6IP((uint32_t *)output_record->ip_nexthop.v6, (uint32_t *)tpl->nexthop);
 				p = (void *)tpl->data;
 				SetFlag(output_record->flags, FLAG_IPV6_NH);
 				} break;
@@ -219,8 +231,7 @@ void		*p = (void *)input_record;
 				} break;
 			case EX_NEXT_HOP_BGP_v6: {
 				tpl_ext_12_t *tpl = (tpl_ext_12_t *)p;
-				output_record->bgp_nexthop.v6[0] = tpl->bgp_nexthop[0];
-				output_record->bgp_nexthop.v6[1] = tpl->bgp_nexthop[1];
+				CopyV6IP((uint32_t *)output_record->bgp_nexthop.v6, (uint32_t *)tpl->bgp_nexthop);
 				p = (void *)tpl->data;
 				SetFlag(output_record->flags, FLAG_IPV6_NHB);
 				} break;
@@ -305,8 +316,7 @@ void		*p = (void *)input_record;
 				} break;
 			case EX_ROUTER_IP_v6: {
 				tpl_ext_24_t *tpl = (tpl_ext_24_t *)p;
-				output_record->ip_router.v6[0] = tpl->router_ip[0];
-				output_record->ip_router.v6[1] = tpl->router_ip[1];
+				CopyV6IP((uint32_t *)output_record->ip_router.v6, (uint32_t *)tpl->router_ip);
 				p = (void *)tpl->data;
 				SetFlag(output_record->flags, FLAG_IPV6_EXP);
 				} break;
@@ -331,7 +341,10 @@ void		*p = (void *)input_record;
 			} break;
 			case EX_RECEIVED: {
 				tpl_ext_27_t *tpl = (tpl_ext_27_t *)p;
-				output_record->received = tpl->received;
+				value64_t v;
+				v.val.val32[0] = tpl->v[0];
+				v.val.val32[1] = tpl->v[1];
+				output_record->received = v.val.val64;
 				p = (void *)tpl->data;
 			} break;
 #ifdef NSEL
@@ -427,6 +440,7 @@ void		*p = (void *)input_record;
 	
 } // End of ExpandRecord_v2
 
+#ifdef NEED_PACKRECORD
 static void PackRecord(master_record_t *master_record, nffile_t *nffile) {
 extension_map_t *extension_map = master_record->map_ref;
 uint32_t required =  COMMON_RECORD_DATA_SIZE + extension_map->extension_size;
@@ -473,7 +487,9 @@ int		i;
 	// Required extension 1 - IP addresses
 	if ( (master_record->flags & FLAG_IPV6_ADDR) != 0 )	{ // IPv6
 		// IPv6
-		memcpy(p, (void *)master_record->v6.srcaddr, 4 * sizeof(uint64_t));	
+		// keep compiler happy
+		// memcpy(p, (void *)master_record->v6.srcaddr, 4 * sizeof(uint64_t));	
+		memcpy(p, (void *)master_record->ip_union._ip_64.addr, 4 * sizeof(uint64_t));	
 		p = (void *)((pointer_addr_t)p + 4 * sizeof(uint64_t));
 	} else { 	
 		// IPv4
@@ -768,6 +784,7 @@ int		i;
 	nffile->buff_ptr = p;
 
 } // End of PackRecord
+#endif
 
 static inline void AppendToBuffer(nffile_t *nffile, void *record, size_t required) {
 

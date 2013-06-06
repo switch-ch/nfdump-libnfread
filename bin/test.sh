@@ -49,6 +49,13 @@ diff -u test1.out nfdump.test.out
 ./nfdump -q -r test.flows -o raw > test2.out
 diff -u test2.out nfdump.test.out
 
+./nfdump -q -r test.flows -O tstart -o raw > test3.out
+diff -u test3.out nfdump.test.out
+
+./nfdump -r test.flows -O tstart -z -w test2.flows
+./nfdump -q -r test2.flows -o raw > test4.out
+diff -u test4.out nfdump.test.out
+
 # uncompressed flow test
 rm -f test.flows test2.out
 ./nfgen | ./nfdump -q -w  test.flows
@@ -86,13 +93,28 @@ if [ -f tmp/pidfile ]; then
 fi
 
 # supress 'received at' as this is always different
-./nfdump -r tmp/nfcapd.* -q -o raw | grep -v 'received at' > test3.out
+./nfdump -r tmp/nfcapd.* -q -o raw | grep -v 'received at' > test5.out
 # nfdump 1.6.5 always uses 64 bits. therefore we have a predictable diff
 # so diff the diff
-diff test3.out nfdump.test.out > test3.diff || true
-diff test3.diff nfdump.test.diff
+diff test5.out nfdump.test.out > test5.diff || true
+diff test5.diff nfdump.test.diff
 
-rm test.flows tmp/nfcapd.* test3.out
+
+# OpenBSD
+export MALLOC_OPTIONS=AFGJS
+# MacOSX
+export MallocGuardEdges=1
+export MallocStackLogging=1
+export MallocStackLoggingDirectory=memck.$$
+export MallocScribble=1
+export MallocErrorAbort=1
+export MallocCorruptionAbort=1
+./nfdump -r test.flows 'host  172.16.14.18'
+./nfdump -r test.flows -s ip 'host  172.16.14.18'
+./nfdump -r test.flows -s record 'host  172.16.14.18'
+./nfdump -r test.flows -w test-2.flows 'host  172.16.14.18'
+./nfdump -r test.flows -O tstart -w test-2.flows 'host  172.16.14.18'
+rm tmp/nfcapd.* test*.out test*.flows
 rmdir tmp
 
-echo All tests successful.
+echo All tests successful. || rm -rf memck.$$

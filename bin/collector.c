@@ -285,7 +285,7 @@ char s[MAXPATHLEN];
 	}
 
 	// cache current collector file
-	if ( snprintf(s, MAXPATHLEN-1, "%s/%s", (*FlowSource)->datadir, NF_DUMPFILE ) >= (MAXPATHLEN-1) ) {
+	if ( snprintf(s, MAXPATHLEN-1, "%s/%s.%lu", (*FlowSource)->datadir , NF_DUMPFILE, (unsigned long)getpid() ) >= (MAXPATHLEN-1)) {
 		fprintf(stderr, "Path too long: %s\n", path);
 		return 0;
 	}

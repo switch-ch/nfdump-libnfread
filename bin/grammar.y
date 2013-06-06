@@ -106,7 +106,7 @@ char yyerror_buff[256];
 %token PPS BPS BPP DURATION NOT END
 %token IPV4 IPV6 BGPNEXTHOP ROUTER VLAN
 %token CLIENT SERVER APP LATENCY SYSID
-%token ASA REASON DENIED XEVENT XIP XPORT INGRESS EGRESS ACL ACE XACE
+%token ASA REASON DENIED XEVENT XIP XNET XPORT INGRESS EGRESS ACL ACE XACE
 %token NAT ADD EVENT VRF NPORT NIP
 %type <value>	expr NUMBER PORTNUM ICMP_TYPE ICMP_CODE
 %type <s> STRING REASON 
@@ -768,6 +768,96 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			} // End of switch
 
 		}
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| dqual XNET STRING '/' NUMBER { 
+#ifdef NSEL
+		int af, bytes, ret;
+		uint64_t	mask[2];
+
+		ret = parse_ip(&af, $3, IPstack, &bytes, STRICT_IP, &num_ip);
+		if ( ret == 0 ) {
+			yyerror("Invalid IP address");
+			YYABORT;
+		}
+		if ( ret == -1 ) {
+			yyerror("IP address required - hostname not allowed here.");
+			YYABORT;
+		}
+		// ret == -2 will never happen here, as STRICT_IP is set
+
+
+		if ( $5 > (bytes*8) ) {
+			yyerror("Too many netbits for this IP addresss");
+			YYABORT;
+		}
+
+		if ( af == PF_INET ) {
+			mask[0] = 0xffffffffffffffffLL;
+			mask[1] = 0xffffffffffffffffLL << ( 32 - $5 );
+		} else {	// PF_INET6
+			if ( $5 > 64 ) {
+				mask[0] = 0xffffffffffffffffLL;
+				mask[1] = 0xffffffffffffffffLL << ( 128 - $5 );
+			} else {
+				mask[0] = 0xffffffffffffffffLL << ( 64 - $5 );
+				mask[1] = 0;
+			}
+		}
+		// IP aadresses are stored in network representation 
+		mask[0]	 = mask[0];
+		mask[1]	 = mask[1];
+
+		IPstack[0] &= mask[0];
+		IPstack[1] &= mask[1];
+
+		switch ( $1.direction ) {
+			case SOURCE:
+				$$.self = Connect_AND(
+					NewBlock(OffsetXLATESRCv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
+					NewBlock(OffsetXLATESRCv6a, mask[0], IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
+				);
+				break;
+			case DESTINATION:
+				$$.self = Connect_AND(
+					NewBlock(OffsetXLATEDSTv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
+					NewBlock(OffsetXLATEDSTv6a, mask[0], IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
+				);
+				break;
+			case DIR_UNSPEC:
+			case SOURCE_OR_DESTINATION:
+				$$.self = Connect_OR(
+					Connect_AND(
+						NewBlock(OffsetXLATESRCv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
+						NewBlock(OffsetXLATESRCv6a, mask[0], IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
+					),
+					Connect_AND(
+						NewBlock(OffsetXLATEDSTv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
+						NewBlock(OffsetXLATEDSTv6a, mask[0], IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
+					)
+				);
+				break;
+			case SOURCE_AND_DESTINATION:
+				$$.self = Connect_AND(
+					Connect_AND(
+						NewBlock(OffsetXLATESRCv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
+						NewBlock(OffsetXLATESRCv6a, mask[0], IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
+					),
+					Connect_AND(
+						NewBlock(OffsetXLATEDSTv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
+						NewBlock(OffsetXLATEDSTv6a, mask[0], IPstack[0] , CMP_EQ, FUNC_NONE, NULL )
+					)
+				);
+				break;
+			default:
+				yyerror("This token is not expected here!");
+				YYABORT;
+		} // End of switch
+
 #else
 		yyerror("NSEL/ASA filters not available");
 		YYABORT;

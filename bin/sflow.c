@@ -135,7 +135,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <sys/time.h>
-#include <syslog.h>
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
@@ -673,7 +672,7 @@ static void receiveError(SFSample *sample, char *errm, int hexdump)
 		printHex(sample->rawSample, sample->rawSampleLen, scratch, 6000, markOffset, 16);
 		hex = scratch;
 	}
-	syslog(LOG_ERR, "SFLOW: %s (source IP = %s) %s\n", msg, IP_to_a(sample->sourceIP.s_addr, ipbuf, 51), hex);
+	LogError("SFLOW: %s (source IP = %s) %s", msg, IP_to_a(sample->sourceIP.s_addr, ipbuf, 51), hex);
 
 	SFABORT(sample, SF_ABORT_DECODE_ERROR);
 
@@ -689,7 +688,7 @@ static void lengthCheck(SFSample *sample, char *description, u_char *start, int 
 	uint32_t adjustedLen = ((len + 3) >> 2) << 2;
 	if(actualLen != adjustedLen) {
 		dbg_printf("%s length error (expected %d, found %d)\n", description, len, actualLen);
-		syslog(LOG_ERR, "SFLOW: %s length error (expected %d, found %d)\n", description, len, actualLen);
+		LogError("SFLOW: %s length error (expected %d, found %d)", description, len, actualLen);
 		SFABORT(sample, SF_ABORT_LENGTH_ERROR);
   }
 
@@ -1052,11 +1051,11 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	ip_flags &= IP_extension_mask;
 
 	if ( ip_flags >= MAX_SFLOW_EXTENSIONS ) {
-		syslog(LOG_ERR,"SFLOW: Corrupt ip_flags: %u", ip_flags);
+		LogError("SFLOW: Corrupt ip_flags: %u", ip_flags);
 	}
 	exporter = GetExporter(fs, sample->agentSubId, sample->meanSkipCount);
 	if ( !exporter ) {
-		syslog(LOG_ERR,"SFLOW: Exporter NULL: Abort sflow record processing");
+		LogError("SFLOW: Exporter NULL: Abort sflow record processing");
 		return;
 	}
 	exporter->packets++;
@@ -1064,13 +1063,13 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	// get appropriate extension map
 	extension_map = exporter->sflow_extension_info[ip_flags].map;
 	if ( !extension_map ) {
-		syslog(LOG_INFO,"SFLOW: setup extension map: %u ", ip_flags);
+		LogInfo("SFLOW: setup extension map: %u", ip_flags);
 		if ( !Setup_Extension_Info(fs, exporter, ip_flags ) ) {
-			syslog(LOG_ERR,"SFLOW: Extension map: NULL: Abort sflow record processing");
+			LogError("SFLOW: Extension map: NULL: Abort sflow record processing");
 			return;
 		}
 		extension_map = exporter->sflow_extension_info[ip_flags].map;
-		syslog(LOG_INFO,"SFLOW: setup extension map: %u done.", ip_flags);
+		LogInfo("SFLOW: setup extension map: %u done", ip_flags);
 	}
 
 	// output buffer size check
@@ -1078,7 +1077,7 @@ uint64_t _bytes, _packets, _t;	// tmp buffers
 	ipsize = sample->gotIPV6 ? 32 : 8;
 	if ( !CheckBufferSpace(fs->nffile, sflow_output_record_size[ip_flags] + ipsize )) {
 		// fishy! - should never happen. maybe disk full?
-		syslog(LOG_ERR,"SFLOW: output buffer size error. Abort sflow record processing");
+		LogError("SFLOW: output buffer size error. Abort sflow record processing");
 		return;
 	}
 
@@ -1247,7 +1246,7 @@ printf("t-received: %llu\n", tpl->received);
 			} break;
 			default: 
 				// this should never happen
-				syslog(LOG_ERR,"SFLOW: Unexpected extension %i for sflow record. Skip extension", id);
+				LogError("SFLOW: Unexpected extension %i for sflow record. Skip extension", id);
 				dbg_printf("SFLOW: Unexpected extension %i for sflow record. Skip extension", id);
 		}
 		j++;
@@ -1878,7 +1877,7 @@ static void readFlowSample_header(SFSample *sample) {
 		dbg_printf("NO_DECODE headerProtocol=%d\n", sample->headerProtocol);
 		break;
 	default:
-		syslog(LOG_ERR, "SFLOW: undefined headerProtocol = %d\n", sample->headerProtocol);
+		LogError("SFLOW: undefined headerProtocol = %d", sample->headerProtocol);
 		exit(-12);
 	}
 	
@@ -2550,7 +2549,7 @@ int Setup_Extension_Info(FlowSource_t *fs, exporter_sflow_t	*exporter, int num) 
 int i, id, extension_size, map_size, map_index;
 
 	dbg_printf("Setup Extension ID 0x%x\n", num);
-	syslog(LOG_INFO, "SFLOW: setup extension map %u", num);
+	LogInfo("SFLOW: setup extension map %u", num);
 
 	// prepare sflow extension map <num>
 	exporter->sflow_extension_info[num].map   = NULL;
@@ -2563,10 +2562,11 @@ int i, id, extension_size, map_size, map_index;
 	if ( ( map_size & 0x3 ) != 0 )
 		map_size += 2;
 
+
 	// Create a generic sflow extension map
 	exporter->sflow_extension_info[num].map = (extension_map_t *)malloc((size_t)map_size);
 	if ( !exporter->sflow_extension_info[num].map ) {
-		syslog(LOG_ERR, "SFLOW: malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+		LogError("malloc() allocation error in %s line %d: %s", __FILE__, __LINE__, strerror(errno) );
 		return 0;
 	}
 
@@ -2616,8 +2616,8 @@ int i, id, extension_size, map_size, map_index;
 	exporter->sflow_extension_info[num].map->map_id   	  = INIT_ID;		
 	exporter->sflow_extension_info[num].map->extension_size = extension_size;		
 
-	syslog(LOG_INFO, "Extension size: %i\n", extension_size);
-	syslog(LOG_INFO, "Extension map size: %i\n", map_size);
+	LogInfo("Extension size: %i", extension_size);
+	LogInfo("Extension map size: %i", map_size);
 
 	if ( !AddExtensionMap(fs, exporter->sflow_extension_info[num].map) ) {
 		// bad - we must free this map and fail - otherwise data can not be read any more
@@ -2626,7 +2626,7 @@ int i, id, extension_size, map_size, map_index;
 		return 0;
 	}
 	dbg_printf("New Extension map ID %i\n", exporter->sflow_extension_info[num].map->map_id);
-	syslog(LOG_INFO, "New extension map id: %i\n", exporter->sflow_extension_info[num].map->map_id);
+	LogInfo("New extension map id: %i", exporter->sflow_extension_info[num].map->map_id);
 
 	return 1;
 
@@ -2660,11 +2660,11 @@ int i;
 	}
 
 	// nothing found
-	syslog(LOG_INFO, "SFLOW: New exporter\n" );
+	LogInfo("SFLOW: New exporter" );
 
 	*e = (exporter_sflow_t *)malloc(sizeof(exporter_sflow_t));
 	if ( !(*e)) {
-		syslog(LOG_ERR, "SFLOW: malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+		LogError("SFLOW: malloc() error in %s line %d: %s", __FILE__, __LINE__, strerror (errno));
 		return NULL;
 	}
 	memset((void *)(*e), 0, sizeof(exporter_sflow_t));
@@ -2684,7 +2684,7 @@ int i;
 
 	sampler = (generic_sampler_t *)malloc(sizeof(generic_sampler_t));
 	if ( !sampler ) {
-		syslog(LOG_ERR, "SFLOW: malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror (errno));
+		LogError("SFLOW: malloc() error in %s line %d: %s", __FILE__, __LINE__, strerror (errno));
 		return NULL;
 	}
 	(*e)->sampler = sampler;
@@ -2702,7 +2702,7 @@ int i;
 
 	dbg_printf("SFLOW: New exporter: SysID: %u, agentSubId: %u, MeanSkipCount: %u, IP: %s\n", 
 		(*e)->info.sysid, agentSubId, meanSkipCount, ipstr);
-	syslog(LOG_INFO, "SFLOW: New exporter: SysID: %u, agentSubId: %u, MeanSkipCount: %u, IP: %s\n", 
+	LogInfo("SFLOW: New exporter: SysID: %u, agentSubId: %u, MeanSkipCount: %u, IP: %s", 
 		(*e)->info.sysid, agentSubId, meanSkipCount, ipstr);
 
 	return (*e);
@@ -2728,7 +2728,7 @@ int 		exceptionVal;
 	} else {
 		// CATCH
 		dbg_printf("SFLOW: caught exception: %d\n", exceptionVal);
-		syslog(LOG_ERR, "SFLOW: caught exception: %d\n", exceptionVal);
+		LogError("SFLOW: caught exception: %d", exceptionVal);
 	}
 	dbg_printf("endDatagram	 =================================\n");
 

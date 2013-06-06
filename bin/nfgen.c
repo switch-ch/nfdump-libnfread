@@ -74,7 +74,9 @@ uint32_t msecs   = 10;
 
 static extension_info_t extension_info;
 
+#define NEED_PACKRECORD 1
 #include "nffile_inline.c"
+#undef NEED_PACKRECORD
 
 void *GenRecord(int af, void *buff_ptr, char *src_ip, char *dst_ip, int src_port, int dst_port, 
 	int proto, int tcp_flags, int tos, uint64_t packets, uint64_t bytes, int src_as, int dst_as);
@@ -215,10 +217,10 @@ nffile_t			*nffile;
 	extension_info.map->ex_id[i] = 0;
 	extension_info.map->size = sizeof(extension_map_t) + i * sizeof(uint16_t);
 
-    // align 32bits
-    if (( extension_info.map->size & 0x3 ) != 0 ) {
-        extension_info.map->size += 4 - ( extension_info.map->size & 0x3 );
-    }
+	// align 32bits
+	if (( extension_info.map->size & 0x3 ) != 0 ) {
+		extension_info.map->size += 4 - ( extension_info.map->size & 0x3 );
+	}
 
 	extension_info.map->extension_size = 0;
 	i=0;

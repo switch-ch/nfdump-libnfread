@@ -66,12 +66,15 @@
 #include "nfexport.h"
 
 #include "nfdump_inline.c"
+
+#define NEED_PACKRECORD 1
 #include "nffile_inline.c"
+#undef NEED_PACKRECORD
+
 #include "heapsort_inline.c"
 #include "applybits_inline.c"
 
 /* global vars */
-extern extension_map_list_t extension_map_list;
 extern extension_descriptor_t extension_descriptor[];
 
 /* local vars */
@@ -79,33 +82,33 @@ enum CntIndices { FLOWS = 0, INPACKETS, INBYTES, OUTPACKETS, OUTBYTES };
 
 static extension_map_t	**export_maps;
 
-static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile );
+static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile, extension_map_list_t *extension_map_list );
 
-static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile ) {
+static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile, extension_map_list_t *extension_map_list ) {
 int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 
 	// no extension maps to export - nothing to do
-	if ( extension_map_list.max_used < 0 )
+	if ( extension_map_list->max_used < 0 )
 		return;
 
 	// allocate table for export maps - no more needed than slots used in extension_map_list
-	export_maps   = (extension_map_t **)calloc(extension_map_list.max_used+1, sizeof(extension_map_t *));
+	export_maps   = (extension_map_t **)calloc(extension_map_list->max_used+1, sizeof(extension_map_t *));
 	if ( !export_maps ) {
 		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 		exit(255);
 	}
 
-	for ( map_id = 0; map_id <= extension_map_list.max_used; map_id++ ) {
-		extension_map_t *SourceMap = extension_map_list.slot[map_id]->map;
+	for ( map_id = 0; map_id <= extension_map_list->max_used; map_id++ ) {
+		extension_map_t *SourceMap = extension_map_list->slot[map_id]->map;
 		int i, has_aggr_flows, has_out_bytes, has_out_packets;
 		// skip maps, never referenced
 
 #ifdef DEVEL
 		printf("Process map id: %i\n", map_id);
-		printf("Ref count: %i\n", extension_map_list.slot[map_id]->ref_count);
+		printf("Ref count: %i\n", extension_map_list->slot[map_id]->ref_count);
 #endif
 
-		if ( extension_map_list.slot[map_id]->ref_count == 0 ) {
+		if ( extension_map_list->slot[map_id]->ref_count == 0 ) {
 #ifdef DEVEL
 			printf("Ref count = 0 => Skip map\n");
 #endif
@@ -238,7 +241,7 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 
 } // End of ExportExtensionMaps
 
-int ExportFlowTable(nffile_t *nffile, int aggregate, int bidir, int date_sorted) {
+int ExportFlowTable(nffile_t *nffile, int aggregate, int bidir, int date_sorted, extension_map_list_t *extension_map_list) {
 hash_FlowTable *FlowTable;
 FlowTableRecord_t	*r;
 SortElement_t 		*SortList;
@@ -249,7 +252,7 @@ uint32_t			maxindex, c;
 char				*string;
 #endif
 
-	ExportExtensionMaps(aggregate, bidir, nffile);
+	ExportExtensionMaps(aggregate, bidir, nffile, extension_map_list);
 	ExportExporterList(nffile);
 
 	aggr_record_mask = GetMasterAggregateMask();
@@ -292,14 +295,14 @@ char				*string;
 		for ( i = 0; i < c; i++ ) {
 			master_record_t	*flow_record;
 			common_record_t *raw_record;
-			int map_id;
+			extension_info_t *extension_info;
 
 			r = (FlowTableRecord_t *)(SortList[i].record);
 			raw_record = &(r->flowrecord);
-			map_id = r->map_ref->map_id;
+			extension_info = r->map_info_ref;
 
-			flow_record = &(extension_map_list.slot[map_id]->master_record);
-			ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
+			flow_record = &(extension_info->master_record);
+			ExpandRecord_v2( raw_record, extension_info, r->exp_ref, flow_record);
 			flow_record->dPkts 		= r->counter[INPACKETS];
 			flow_record->dOctets 	= r->counter[INBYTES];
 			flow_record->out_pkts 	= r->counter[OUTPACKETS];
@@ -322,8 +325,8 @@ char				*string;
 			}
 
 			// switch to output extension map
-			flow_record->map_ref = export_maps[map_id];
-			flow_record->ext_map = map_id;
+			flow_record->map_ref = extension_info->map;
+			flow_record->ext_map = extension_info->map->map_id;
 			PackRecord(flow_record, nffile);
 #ifdef DEVEL
 			format_file_block_record((void *)flow_record, &string, 0);
@@ -340,13 +343,13 @@ char				*string;
 			while ( r ) {
 				master_record_t	*flow_record;
 				common_record_t *raw_record;
-				int map_id;
+				extension_info_t *extension_info;
 
 				raw_record = &(r->flowrecord);
-				map_id = r->map_ref->map_id;
+				extension_info = r->map_info_ref;
 
-				flow_record = &(extension_map_list.slot[map_id]->master_record);
-				ExpandRecord_v2( raw_record, extension_map_list.slot[map_id], r->exp_ref, flow_record);
+				flow_record = &(extension_info->master_record);
+				ExpandRecord_v2( raw_record, extension_info, r->exp_ref, flow_record);
 				flow_record->dPkts 		= r->counter[INPACKETS];
 				flow_record->dOctets 	= r->counter[INBYTES];
 				flow_record->out_pkts 	= r->counter[OUTPACKETS];
@@ -369,8 +372,8 @@ char				*string;
 				}
 
 				// switch to output extension map
-				flow_record->map_ref = export_maps[map_id];
-				flow_record->ext_map = map_id;
+				flow_record->map_ref = extension_info->map;
+				flow_record->ext_map = extension_info->map->map_id;
 				PackRecord(flow_record, nffile);
 #ifdef DEVEL
 				format_file_block_record((void *)flow_record, &string, 0);
