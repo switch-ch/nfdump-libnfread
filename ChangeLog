@@ -1,4 +1,21 @@
-2012-10-26 1.6.8
+2013-03-02 v1.6.9
+- Fix some bugs in beta 1.6.9 NSEL code
+- Fix bug statistics update with aggreagted flow records
+- Fix sflow bug sfcapd stores wrong (ghost) dump by past samples in same sflow datagram
+
+2012-12-31
+- Add time received in csv output
+- ICMP should handled better now - somewhat
+- Implement ASA NSEL records
+- Add definitions in nffile and nx for ASA NSEL extensions
+
+2012-11-09 v1.6.8p1
+- Add dynamic source directory tree for multiple exporters
+- Fix exporter bug: 'too many exporters' with large time windows
+- Fix uninitialised exporter sysid in default sampler record - v9
+- Fix v9/ipfix cache initialisation with no templates > 1 in same packet
+
+2012-10-26 v1.6.8
 - Add ip list option for 'next ip' in filter syntax
 - Accept v9 sampler_id in 2bytes
 - Fix IPFIX mac address bug - did not get collected
@@ -16,12 +33,12 @@
 - Add -O tend. Print order according to tend of flows ascending
 - Apply -O print order for printing flow cache. Applies to -A
 
-2012-07-31 1.6.7-tc-1
+2012-07-31 v1.6.7-tc-1
 - Special version for TC
 - Print exporter and sampling records with nfdump -E
 - Added exporter and sampling records to file.
 
-2012-07-30 1.6.7
+2012-07-30 v1.6.7
 - Prepare for file catalog in current file format.
 - Fix bug in ReadBlock when reading flow from stdin pipe
 - Add new more flexible translation engine for v9
@@ -30,7 +47,7 @@
 - Fix memory corruption with double -A flags
 - Fix bug in nfreader with compat15 mode files
 
-2012-03-12 1.6.6
+2012-03-12 v1.6.6
 - Minor IPFIX bug.
 - IPFIX implement template withdraw
 - For IPFIX, check packet sequence per template and observation domain
@@ -39,7 +56,7 @@
 - Fixed typos
 - Fix seg fault bug - test for EMPTY_LIST was missing at several places.
 
-2012-02-19 1.6.6b1
+2012-02-19 v1.6.6b1
 - Fix bps/pps. make it uint64_t, as bps/pps > 4Gb/s overflows.
 - In record raw print mode: decode ICMP instead of src/dst ports
 - sflow use announced exporter IP instead of sending IP for router ID
@@ -47,12 +64,12 @@
 - sflow: fix packet length issue.
 - Add IPFIX protokoll support
 
-2011-12-31 1.6.5
+2011-12-31 v1.6.5
 - Fix 64bit bug when using byte/packet limits
 - for v5 and sampling use 64bit counters to prevent overflow for large sampled flows.
 - Fixed Ident printig bug
 
-2011-07-11 1.6.4
+2011-07-11 v1.6.4
 - some code restructuring - prepare for IPFIX module
 - Add netflow v1 module. Some routers still use that
 - Add %sn, %dn output tags for src/dst networks
@@ -63,7 +80,7 @@
 - implement extended statistics. Currently ports and bpp distribution
   vectors can be collected automatically be nfcapd. Still experimental
 
-2011-02-26 1.6.3p1
+2011-02-26 v1.6.3p1
 - Fix timebug fix :(, make it a compile time option
 - fix v7 sequence errors
 

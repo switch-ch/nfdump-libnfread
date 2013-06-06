@@ -27,9 +27,9 @@
  *  
  *  $Author: peter $
  *
- *  $Id: exporter.c 130 2012-10-26 05:16:06Z peter $
+ *  $Id: exporter.c 135 2012-11-10 11:40:54Z peter $
  *
- *  $LastChangedRevision: 130 $
+ *  $LastChangedRevision: 135 $
  *	
  */
 
@@ -101,8 +101,9 @@ uint32_t id = exporter_record->sysid;
 
 	if ( exporter_list[id] != NULL ) {
 		// slot already taken - check if exporters are identical
+		exporter_record->sysid = exporter_list[id]->info.sysid;
 		if ( memcmp((void *)exporter_record, (void *)&(exporter_list[id]->info), sizeof(exporter_info_record_t)) == 0 ) {
-			dbg_printf("Found identical exporter record at SysID: %i\n", id);
+			dbg_printf("Found identical exporter record at SysID: %i, Slot: %u\n", exporter_record->sysid, id);
 			// we are done
 			return 2;
 		} else {
@@ -130,7 +131,7 @@ uint32_t id = exporter_record->sysid;
 		return 0;
 	}
 	memcpy((void *)&(exporter_list[id]->info), (void *)exporter_record, sizeof(exporter_info_record_t));
-	dbg_printf("Insert exporter record in slot %i:\n", id);
+	dbg_printf("Insert exporter record in Slot: %i, Sysid: %u\n", id, exporter_record->sysid);
 
 #ifdef DEVEL
 	{
@@ -139,15 +140,15 @@ uint32_t id = exporter_record->sysid;
 		if ( exporter_record->sa_family == AF_INET ) {
 			uint32_t _ip = htonl(exporter_record->ip.v4);
 			inet_ntop(AF_INET, &_ip, ipstr, sizeof(ipstr));
-			printf("SysID: %u, IP: %16s, version: %u, ID: %2u\n", exporter_record->sysid,
-				ipstr, exporter_record->version, exporter_record->id);
+			printf("SysID: %u, IP: %16s, version: %u, ID: %2u, Slot: %u\n", exporter_record->sysid,
+				ipstr, exporter_record->version, exporter_record->id, id);
 		} else if ( exporter_record->sa_family == AF_INET6 ) {
 			uint64_t _ip[2];
 			_ip[0] = htonll(exporter_record->ip.v6[0]);
 			_ip[1] = htonll(exporter_record->ip.v6[1]);
 			inet_ntop(AF_INET6, &_ip, ipstr, sizeof(ipstr));
-			printf("SysID: %u, IP: %40s, version: %u, ID: %2u\n", exporter_record->sysid,
-				ipstr, exporter_record->version, exporter_record->id);
+			printf("SysID: %u, IP: %40s, version: %u, ID: %2u, Slot: %u\n", exporter_record->sysid,
+				ipstr, exporter_record->version, exporter_record->id, id);
 		} else {
 			strncpy(ipstr, "<unknown>", IP_STRING_LEN);
 			printf("**** Exporter IP version unknown ****\n");
@@ -168,7 +169,7 @@ uint32_t id = sampler_record->exporter_sysid;
 generic_sampler_t	**sampler;
 
 	if ( !exporter_list[id] ) {
-		LogError("Exporter SysID: %u not found! - Skip sampler record.\n");
+		LogError("Exporter SysID: %u not found! - Skip sampler record", id);
 		return 0;
 	}
 	sampler = &exporter_list[id]->sampler;
@@ -403,7 +404,7 @@ uint64_t total_bytes;
 					exporter->sysid, ipstr, exporter->version, exporter->id);
 		} else {
 			strncpy(ipstr, "<unknown>", IP_STRING_LEN);
-			printf("**** Exporter IP version unknown **** ");
+			printf("**** Exporter IP version unknown ****\n");
 		}
 
 		sampler  = exporter_list[i]->sampler;

@@ -182,6 +182,22 @@ extern generic_exporter_t **exporter_list;
 
 #define FORMAT_bilong "%ts %td %pr %sap <-> %dap %flg %tos %opkt %ipkt %obyt %ibyt %fl"
 
+#define FORMAT_nsel "%ts %evt %xevt %pr %sap -> %dap %xsap -> %xdap %byt"
+
+#define FORMAT_nel "%ts %nevt %pr %sap -> %dap %nsap -> %ndap"
+
+#ifdef NSEL
+#	define DefaultMode "nsel"
+#else 
+
+#ifdef NEL
+#	define DefaultMode "nel"
+#else
+#	define DefaultMode "line"
+#endif
+
+#endif
+
 /* The appropriate header line is compiled automatically.
  *
  * For each defined output format a v6 long format automatically exists as well e.g.
@@ -213,13 +229,18 @@ printmap_t printmap[] = {
 	{ "bilong", 	format_special,      		FORMAT_bilong 	},
 	{ "pipe", 		flow_record_to_pipe,      	NULL 			},
 	{ "csv", 		flow_record_to_csv,      	NULL 			},
+#ifdef NSEL
+	{ "nsel",		format_special, 			FORMAT_nsel		},
+#endif
+#ifdef NEL
+	{ "nel",		format_special, 			FORMAT_nel		},
+#endif
+
 // add your formats here
 
 // This is always the last line
 	{ NULL,			NULL,                       NULL			}
 };
-
-#define DefaultMode "line"
 
 // For automatic output format generation in case of custom aggregation
 #define AggrPrependFmt	"%ts %td "
@@ -813,10 +834,19 @@ char 		Ident[IDENTLEN];
                     exit(255);
                 } 
 				break;
-			case 'V':
-				printf("%s: Version: %s\n",argv[0], nfdump_version);
+			case 'V': {
+				char *e1, *e2;
+				e1 = "";
+				e2 = "";
+#ifdef NSEL
+				e1 = "NSEL-";
+#endif
+#ifdef NEL
+				e2 = "NEL-";
+#endif
+				printf("%s: Version: %s%s%s\n",argv[0], e1, e2, nfdump_version);
 				exit(0);
-				break;
+				} break;
 			case 'l':
 				packet_limit_string = optarg;
 				break;
@@ -845,7 +875,8 @@ char 		Ident[IDENTLEN];
 					rfile = NULL;
 				break;
 			case 'm':
-				Parse_PrintOrder("tstart");
+				print_order = "tstart";
+				Parse_PrintOrder(print_order);
 				date_sorted = 1;
 				LogError("Option -m depricated. Use '-O tstart' instead\n");
 				break;

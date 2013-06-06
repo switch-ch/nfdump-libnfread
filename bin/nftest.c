@@ -341,13 +341,42 @@ void *p;
 	ret = check_filter_block("proto 47", &flow_record, 1);
 	ret = check_filter_block("proto 42", &flow_record, 0);
 
+	flow_record.srcport = 0xaaaa;
+	flow_record._fill = 0xeeee;
 	flow_record.prot = IPPROTO_ICMP;
-	flow_record.dstport = 250; // -> icmp code 250
+	flow_record.dstport = 0xaffa; // -> icmp type 175, code 250
+	flow_record.icmp = flow_record.dstport;
+	flow_record.dstport = 0xbbbb;
+	ret = check_filter_block("icmp-type 175", &flow_record, 1);
+	ret = check_filter_block("icmp-type 176", &flow_record, 0);
 	ret = check_filter_block("icmp-code 250", &flow_record, 1);
 	ret = check_filter_block("icmp-code 251", &flow_record, 0);
-	flow_record.dstport = 3 << 8; // -> icmp type 8
+
+	if ( flow_record.icmp_type != 175 && flow_record.icmp_code != 250 ) {
+        printf("**** FAILED **** ICMP type check failed!\n" );
+        printf("ICMP type: %u, code: %u\n", flow_record.icmp_type, flow_record.icmp_code );
+		exit(255);
+	}
+
+	flow_record.dstport = 3 << 8; // -> icmp type 3
+	flow_record.icmp = flow_record.dstport;
+	if ( flow_record.icmp_type != 3 ) {
+        printf("**** FAILED **** ICMP type check failed!\n" );
+        printf("ICMP type: %u, code: %u\n", flow_record.icmp_type, flow_record.icmp_code );
+		exit(255);
+	}
 	ret = check_filter_block("icmp-type 3", &flow_record, 1);
 	ret = check_filter_block("icmp-type 4", &flow_record, 0);
+
+	flow_record.dstport = 8; // -> icmp code 8
+	flow_record.icmp = flow_record.dstport;
+	if ( flow_record.icmp_code != 8 ) {
+        printf("**** FAILED **** ICMP code check failed!\n" );
+        printf("ICMP type: %u, code: %u\n", flow_record.icmp_type, flow_record.icmp_code );
+		exit(255);
+	}
+	ret = check_filter_block("icmp-code 8", &flow_record, 1);
+	ret = check_filter_block("icmp-code 4", &flow_record, 0);
 
 
 	inet_pton(PF_INET6, "fe80::2110:abcd:1234:5678", flow_record.v6.srcaddr);
@@ -985,6 +1014,166 @@ void *p;
 	flow_record.exporter_sysid = 44;
 	ret = check_filter_block("sysid 44", &flow_record, 1);
 	ret = check_filter_block("sysid 45", &flow_record, 0);
+
+	// NSEL/ASA related tests
+#ifdef NSEL
+	flow_record.fw_event = NSEL_EVENT_IGNORE;
+	ret = check_filter_block("asa event ignore", &flow_record, 1);
+	ret = check_filter_block("asa event create", &flow_record, 0);
+	flow_record.fw_event = NSEL_EVENT_CREATE;
+	ret = check_filter_block("asa event create", &flow_record, 1);
+	flow_record.fw_event = NSEL_EVENT_DELETE;
+	ret = check_filter_block("asa event term", &flow_record, 1);
+	ret = check_filter_block("asa event delete", &flow_record, 1);
+	flow_record.fw_event = NSEL_EVENT_DENIED;
+	ret = check_filter_block("asa event deny", &flow_record, 1);
+	ret = check_filter_block("asa event create", &flow_record, 0);
+	ret = check_filter_block("asa event 3", &flow_record, 1);
+	ret = check_filter_block("asa event > 2", &flow_record, 1);
+	ret = check_filter_block("asa event > 3", &flow_record, 0);
+
+	flow_record.fw_xevent = 1001;
+	ret = check_filter_block("asa event denied ingress", &flow_record, 1);
+	ret = check_filter_block("asa event denied egress", &flow_record, 0);
+	flow_record.fw_xevent = 1002;
+	ret = check_filter_block("asa event denied egress", &flow_record, 1);
+	flow_record.fw_xevent = 1003;
+	ret = check_filter_block("asa event denied interface", &flow_record, 1);
+	flow_record.fw_xevent = 1004;
+	ret = check_filter_block("asa event denied nosyn", &flow_record, 1);
+	ret = check_filter_block("asa event denied ingress", &flow_record, 0);
+	flow_record.fw_event = NSEL_EVENT_CREATE;
+	ret = check_filter_block("asa event denied nosyn", &flow_record, 0);
+
+	ret = check_filter_block("asa xevent 1004", &flow_record, 1);
+	ret = check_filter_block("asa xevent < 1004", &flow_record, 0);
+	ret = check_filter_block("asa xevent > 1004", &flow_record, 0);
+
+	flow_record.xlate_src_ip.v6[0] = 0;
+	flow_record.xlate_src_ip.v6[1] = 0;
+	flow_record.xlate_src_ip.v4 = 0xac200710;
+	flow_record.xlate_dst_ip.v6[0] = 0;
+	flow_record.xlate_dst_ip.v6[1] = 0;
+	flow_record.xlate_dst_ip.v4 = 0x0a0a0a0b;
+	ret = check_filter_block("src xip 172.32.7.16", &flow_record, 1);
+	ret = check_filter_block("src xip 172.32.7.15", &flow_record, 0);
+	ret = check_filter_block("dst xip 10.10.10.11", &flow_record, 1);
+	ret = check_filter_block("dst xip 10.10.10.12", &flow_record, 0);
+	ret = check_filter_block("xip 172.32.7.16", &flow_record, 1);
+	ret = check_filter_block("xip 10.10.10.11", &flow_record, 1);
+	ret = check_filter_block("xip 172.32.7.15", &flow_record, 0);
+	ret = check_filter_block("xip 10.10.10.12", &flow_record, 0);
+
+	inet_pton(PF_INET6, "fe80::2110:abcd:1235:ffff", flow_record.xlate_src_ip.v6);
+	flow_record.xlate_src_ip.v6[0] = ntohll(flow_record.xlate_src_ip.v6[0]);
+	flow_record.xlate_src_ip.v6[1] = ntohll(flow_record.xlate_src_ip.v6[1]);
+	ret = check_filter_block("src xip fe80::2110:abcd:1235:ffff", &flow_record, 1);
+	ret = check_filter_block("src xip fe80::2110:abcd:1235:fffe", &flow_record, 0);
+
+	flow_record.xlate_src_ip.v6[0] = 0;
+	flow_record.xlate_src_ip.v6[1] = 0;
+	inet_pton(PF_INET6, "fe80::2110:abcd:1235:fffe", flow_record.xlate_dst_ip.v6);
+	flow_record.xlate_dst_ip.v6[0] = ntohll(flow_record.xlate_dst_ip.v6[0]);
+	flow_record.xlate_dst_ip.v6[1] = ntohll(flow_record.xlate_dst_ip.v6[1]);
+	ret = check_filter_block("dst xip fe80::2110:abcd:1235:fffe", &flow_record, 1);
+	ret = check_filter_block("dst xip fe80::2110:abcd:1235:fffc", &flow_record, 0);
+	flow_record.xlate_src_ip.v6[0] = 0;
+	flow_record.xlate_src_ip.v6[1] = 0;
+	flow_record.xlate_dst_ip.v6[0] = 0;
+	flow_record.xlate_dst_ip.v6[1] = 0;
+
+	flow_record.xlate_src_port = 1023;
+	flow_record.xlate_dst_port = 32798;
+	ret = check_filter_block("src xport 1023", &flow_record, 1);
+	ret = check_filter_block("dst xport 32798", &flow_record, 1);
+	ret = check_filter_block("src xport > 1022", &flow_record, 1);
+	ret = check_filter_block("src xport < 1024", &flow_record, 1);
+	ret = check_filter_block("dst xport lt 32799", &flow_record, 1);
+	ret = check_filter_block("dst xport gt 32797", &flow_record, 1);
+	ret = check_filter_block("src xport > 1023", &flow_record, 0);
+	ret = check_filter_block("dst xport gt 32798", &flow_record, 0);
+	ret = check_filter_block("src xport 1022", &flow_record, 0);
+	ret = check_filter_block("dst xport 32797", &flow_record, 0);
+	flow_record.xlate_src_port = 0xffff;
+	flow_record.xlate_dst_port = 0xffff;
+
+	flow_record.ingress_acl_id[0] = 0xaabbcc;
+	flow_record.ingress_acl_id[1] = 0xbbccdd;
+	flow_record.ingress_acl_id[2] = 0xccddee;
+
+	flow_record.egress_acl_id[0] = 0x112233;
+	flow_record.egress_acl_id[1] = 0x223344;
+	flow_record.egress_acl_id[2] = 0x334455;
+
+	ret = check_filter_block("ingress ACL 0xaabbcc", &flow_record, 1);
+	flow_record.fw_event = 255;
+
+#endif
+
+	// NEL/NAT related tests
+#ifdef NEL
+	flow_record.nat_event = NEL_EVENT_INVALID;
+	ret = check_filter_block("nat event invalid", &flow_record, 1);
+	ret = check_filter_block("nat event add", &flow_record, 0);
+	flow_record.nat_event = NEL_EVENT_ADD;
+	ret = check_filter_block("nat event add", &flow_record, 1);
+	flow_record.nat_event = NEL_EVENT_DELETE;
+	ret = check_filter_block("nat event delete", &flow_record, 1);
+	ret = check_filter_block("nat event add", &flow_record, 0);
+	ret = check_filter_block("nat event 2", &flow_record, 1);
+	ret = check_filter_block("nat event > 1", &flow_record, 1);
+	ret = check_filter_block("nat event > 2", &flow_record, 0);
+	flow_record.nat_event = 255;
+
+	flow_record.ingress_vrfid = 0xAAAA;
+	ret = check_filter_block("ingress vrf 0xAAAA", &flow_record, 1);
+	ret = check_filter_block("ingress vrf 100", &flow_record, 0);
+
+	flow_record.post_src_port = 1023;
+	flow_record.post_dst_port = 32798;
+	ret = check_filter_block("src nport 1023", &flow_record, 1);
+	ret = check_filter_block("dst nport 32798", &flow_record, 1);
+	ret = check_filter_block("src nport > 1022", &flow_record, 1);
+	ret = check_filter_block("src nport < 1024", &flow_record, 1);
+	ret = check_filter_block("dst nport lt 32799", &flow_record, 1);
+	ret = check_filter_block("dst nport gt 32797", &flow_record, 1);
+	ret = check_filter_block("src nport > 1023", &flow_record, 0);
+	ret = check_filter_block("dst nport gt 32798", &flow_record, 0);
+	ret = check_filter_block("src nport 1022", &flow_record, 0);
+	ret = check_filter_block("dst nport 32797", &flow_record, 0);
+	flow_record.post_src_port = 0xffff;
+	flow_record.post_dst_port = 0xffff;
+
+	flow_record.nat_inside.v6[0] = 0;
+	flow_record.nat_inside.v6[1] = 0;
+	flow_record.nat_inside.v4 = 0xac200710;
+	flow_record.nat_outside.v6[0] = 0;
+	flow_record.nat_outside.v6[1] = 0;
+	flow_record.nat_outside.v4 = 0x0a0a0a0b;
+	ret = check_filter_block("src nip 172.32.7.16", &flow_record, 1);
+	ret = check_filter_block("src nip 172.32.7.15", &flow_record, 0);
+	ret = check_filter_block("dst nip 10.10.10.11", &flow_record, 1);
+	ret = check_filter_block("dst nip 10.10.10.12", &flow_record, 0);
+	ret = check_filter_block("nip 172.32.7.16", &flow_record, 1);
+	ret = check_filter_block("nip 10.10.10.11", &flow_record, 1);
+	ret = check_filter_block("nip 172.32.7.15", &flow_record, 0);
+	ret = check_filter_block("nip 10.10.10.12", &flow_record, 0);
+
+	inet_pton(PF_INET6, "fe80::2110:abcd:1235:ffff", flow_record.nat_inside.v6);
+	flow_record.nat_inside.v6[0] = ntohll(flow_record.nat_inside.v6[0]);
+	flow_record.nat_inside.v6[1] = ntohll(flow_record.nat_inside.v6[1]);
+	ret = check_filter_block("src nip fe80::2110:abcd:1235:ffff", &flow_record, 1);
+	ret = check_filter_block("src nip fe80::2110:abcd:1235:fffe", &flow_record, 0);
+
+	flow_record.nat_inside.v6[0] = 0;
+	flow_record.nat_inside.v6[1] = 0;
+	inet_pton(PF_INET6, "fe80::2110:abcd:1235:fffe", flow_record.nat_outside.v6);
+	flow_record.nat_outside.v6[0] = ntohll(flow_record.nat_outside.v6[0]);
+	flow_record.nat_outside.v6[1] = ntohll(flow_record.nat_outside.v6[1]);
+	ret = check_filter_block("dst nip fe80::2110:abcd:1235:fffe", &flow_record, 1);
+	ret = check_filter_block("dst nip fe80::2110:abcd:1235:fffc", &flow_record, 0);
+
+#endif
 
 	return 0;
 }

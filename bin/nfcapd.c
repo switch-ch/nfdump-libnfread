@@ -665,9 +665,22 @@ srecord_t	*commbuff;
 		// get flow source record for current packet, identified by sender IP address
 		fs = GetFlowSource(&nf_sender);
 		if ( fs == NULL ) {
-			syslog(LOG_WARNING, "Skip UDP packet. Ignored packets so far %u packets", ignored_packets);
-			ignored_packets++;
-			continue;
+			fs = AddDynamicSource(&FlowSource, &nf_sender);
+			if ( fs == NULL ) {
+				syslog(LOG_WARNING, "Skip UDP packet. Ignored packets so far %u packets", ignored_packets);
+				ignored_packets++;
+				continue;
+			}
+			if ( InitBookkeeper(&fs->bookkeeper, fs->datadir, getpid(), launcher_pid) != BOOKKEEPER_OK ) {
+				LogError("Failed to initialise bookkeeper for new source");
+				// fatal error
+				return;
+			}
+			fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, NULL);
+			if ( !fs->nffile ) {
+				LogError("Failed to open new collector file");
+				continue;
+			}
 		}
 
 		/* check for too little data - cnt must be > 0 at this point */
@@ -751,7 +764,7 @@ int main(int argc, char **argv) {
  
 char	*bindhost, *filter, *datadir, pidstr[32], *launch_process;
 char	*userid, *groupid, *checkptr, *listenport, *mcastgroup, *extension_tags;
-char	*Ident, *pcap_file, pidfile[MAXPATHLEN];
+char	*Ident, *pcap_file, *dynsrcdir, pidfile[MAXPATHLEN];
 struct stat fstat;
 srecord_t	*commbuff;
 packet_function_t receive_packet;
@@ -791,8 +804,9 @@ int		c;
 	FlowSource		= NULL;
 	extension_tags	= DefaultExtensions;
 	pcap_file		= NULL;
+	dynsrcdir		= NULL;
 
-	while ((c = getopt(argc, argv, "46ef:whEVI:DB:b:j:l:n:p:P:R:S:s:T:t:x:Xru:g:z")) != EOF) {
+	while ((c = getopt(argc, argv, "46ef:whEVI:DB:b:j:l:M:n:p:P:R:S:s:T:t:x:Xru:g:z")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -836,6 +850,22 @@ int		c;
 				break;
 			case 'I':
 				Ident = strdup(optarg);
+				break;
+			case 'M':
+				dynsrcdir = strdup(optarg);
+				if ( strlen(dynsrcdir) > MAXPATHLEN ) {
+					fprintf(stderr, "ERROR: Path too long!\n");
+					exit(255);
+				}
+				err  = stat(dynsrcdir, &fstat);
+				if ( !(fstat.st_mode & S_IFDIR) ) {
+					fprintf(stderr, "No such directory: %s\n", dynsrcdir);
+					break;
+				}
+				if ( !SetDynamicSourcesDir(&FlowSource, dynsrcdir) ) {
+					fprintf(stderr, "-l, -M and -n are mutually exclusive\n");
+					break;
+				}
 				break;
 			case 'n':
 				if ( AddFlowSource(&FlowSource, optarg) != 1 ) 
@@ -959,12 +989,14 @@ int		c;
 		}
 	}
 	
-	if ( FlowSource == NULL && datadir == NULL ) {
-		fprintf(stderr, "ERROR, Missing -n (-l/-I) source definitions\n");
+	if ( FlowSource == NULL && datadir == NULL && dynsrcdir == NULL ) {
+		fprintf(stderr, "ERROR, Missing -n (-l/-I) or -M source definitions\n");
 		exit(255);
 	}
-	if ( FlowSource == NULL && !AddDefaultFlowSource(&FlowSource, Ident, datadir) )
+	if ( FlowSource == NULL && datadir != NULL && !AddDefaultFlowSource(&FlowSource, Ident, datadir) ) {
+		fprintf(stderr, "Failed to add default data collector directory\n");
 		exit(255);
+	}
 
 	if ( bindhost && mcastgroup ) {
 		fprintf(stderr, "ERROR, -b and -j are mutually exclusive!!\n");

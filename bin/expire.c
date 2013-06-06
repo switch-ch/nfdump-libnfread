@@ -369,9 +369,10 @@ time_t 		now = time(NULL);
 	if ( dirstat->low_water == 0 )
 		dirstat->low_water = 95;
 
-	SetupSignalHandler();
-	if ( runtime )
+	if ( runtime ) {
+		SetupSignalHandler();
 		alarm(runtime);
+	}
 
 	if ( maxlife ) {
 		// build an appropriate string for comparing

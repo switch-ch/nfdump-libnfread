@@ -79,7 +79,7 @@ struct flow_element_s {
 	uint32_t	shift;		// number of bits to shift right to get final value
 };
 
-enum { IS_NUMBER = 1, IS_IPADDR, IS_MACADDR, IS_MPLS_LBL, IS_LATENCY};
+enum { IS_NUMBER = 1, IS_IPADDR, IS_MACADDR, IS_MPLS_LBL, IS_LATENCY, IS_EVENT, IS_HEX};
 
 struct StatParameter_s {
 	char					*statname;		// name of -s option
@@ -290,6 +290,83 @@ struct StatParameter_s {
 	{ "al",	 "  Appl Latency", 
 		{ {0, OffsetAppLatency, MaskLatency, 0}, {0,0,0,0} },
 			1, IS_LATENCY },
+
+#ifdef NSEL
+	{ "event", " Event", 
+		{ {0, OffsetConnID, MaskFWevent, ShiftFWevent}, 		{0,0,0,0} },
+			1, IS_EVENT},
+
+	{ "xevent", "X-Event", 
+		{ {0, OffsetConnID, MaskFWXevent, ShiftFWXevent}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "xsrcip",	 "X-Src IP Addr", 
+		{ {OffsetXLATESRCv6a, OffsetXLATESRCv6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "xdstip",	 "X-Dst IP Addr", 
+		{ {OffsetXLATEDSTv6a, OffsetXLATEDSTv6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "xsrcport", " X-Src Port", 
+		{ {0, OffsetXLATEPort, MaskXLATESRCPORT, ShiftXLATESRCPORT}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "xdstport", " X-Dst Port", 
+		{ {0, OffsetXLATEPort, MaskXLATEDSTPORT, ShiftXLATEDSTPORT}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "iacl", "Ingress ACL", 
+		{ {0, OffsetIngressAclId, MaskIngressAclId, ShiftIngressAclId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "iace", "Ingress ACE", 
+		{ {0, OffsetIngressAceId, MaskIngressAceId, ShiftIngressAceId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "ixace", "Ingress xACE", 
+		{ {0, OffsetIngressGrpId, MaskIngressGrpId, ShiftIngressGrpId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "eacl", "Egress ACL", 
+		{ {0, OffsetEgressAclId, MaskEgressAclId, ShiftEgressAclId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "eace", "Egress ACE", 
+		{ {0, OffsetEgressAceId, MaskEgressAceId, ShiftEgressAceId}, 		{0,0,0,0} },
+			1, IS_HEX},
+
+	{ "exace", "Egress xACE", 
+		{ {0, OffsetEgressGrpId, MaskEgressGrpId, ShiftEgressGrpId}, 		{0,0,0,0} },
+			1, IS_HEX},
+#endif
+
+#ifdef NEL
+	{ "nevent", " Event", 
+		{ {0, OffsetNELcommon, MasNATevent, ShiftNATevent}, 		{0,0,0,0} },
+			1, IS_EVENT},
+
+	{ "vrf", " vrf-ID", 
+		{ {0, OffsetVRFID, MaskVRFID, ShiftVRFID}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "nsrcip",	 "N-Src IP Addr", 
+		{ {OffsetGlobalInsidev6a, OffsetGlobalInsidev6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "ndstip",	 "N-Dst IP Addr", 
+		{ {OffsetGlobalOutsidev6a, OffsetGlobalOutsidev6b, MaskIPv6, 0},	{0,0,0,0} },
+			1, IS_IPADDR},
+
+	{ "nsrcport", " N-Src Port", 
+		{ {0, OffsetNELcommon, MaskPostSRCPort, ShiftPostSRCPort}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+	{ "ndstport", " N-Dst Port", 
+		{ {0, OffsetNELcommon, MaskPostDSTPort, ShiftPostDSTPort}, 		{0,0,0,0} },
+			1, IS_NUMBER},
+
+#endif
 
 	{ NULL, 	 NULL, 			
 		{ {0,0,0,0},	{0,0,0,0} },
@@ -912,7 +989,7 @@ int	j, i;
 					stat_record->last 		= flow_record->last;
 					stat_record->msec_last 	= flow_record->msec_last;
 				}
-				stat_record->counter[FLOWS]++;
+				stat_record->counter[FLOWS] += flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 
 			} else {
 				stat_record = stat_hash_insert(value[i], flow_record->prot, j);
@@ -924,7 +1001,7 @@ int	j, i;
 				stat_record->last				= flow_record->last;
 				stat_record->msec_last			= flow_record->msec_last;
 				stat_record->record_flags		= flow_record->flags & 0x1;
-				stat_record->counter[FLOWS] 	= 1;
+				stat_record->counter[FLOWS]		= flow_record->aggr_flows ? flow_record->aggr_flows : 1;
 			}
 		} // for the number of elements in this stat type
 	} // for every requested -s stat
@@ -980,6 +1057,32 @@ struct tm	*tbuff;
 			} break;
 		case IS_LATENCY: {
 			snprintf(valstr, 40, "      %9.3f", (double)((double)StatData->stat_key[1]/1000.0));
+			} break;
+#ifdef NSEL
+		case IS_EVENT: {
+			long long unsigned event = StatData->stat_key[1];
+			char *s;
+			switch(event) {
+				case 0:
+					s = "ignore";
+					break;
+				case 1:
+					s = "CREATE";
+					break;
+				case 2:
+					s = "DELETE";
+					break;
+				case 3:
+					s = "DENIED";
+					break;
+				default:
+					s = "UNKNOWN";
+			}			
+			snprintf(valstr, 40, "      %6s", s);
+			} break;
+#endif
+		case IS_HEX: {
+			snprintf(valstr, 40, "0x%llx", (unsigned long long)StatData->stat_key[1]);
 		} break;
 	}
 
@@ -989,9 +1092,9 @@ struct tm	*tbuff;
 	format_number(StatData->counter[INPACKETS], packets_str, FIXED_WIDTH);
 	format_number(StatData->counter[INBYTES], byte_str, FIXED_WIDTH);
 
-	flows_percent   = (double)(StatData->counter[FLOWS] * 100 ) / (double)stat->numflows;
-	packets_percent = (double)(StatData->counter[INPACKETS] * 100 ) / (double)stat->numpackets;
-	bytes_percent   = (double)(StatData->counter[INBYTES] * 100 ) / (double)stat->numbytes;
+	flows_percent   = stat->numflows   ? (double)(StatData->counter[FLOWS] * 100 ) / (double)stat->numflows : 0;
+	packets_percent = stat->numpackets ? (double)(StatData->counter[INPACKETS] * 100 ) / (double)stat->numpackets : 0;
+	bytes_percent   = stat->numbytes   ? (double)(StatData->counter[INBYTES] * 100 ) / (double)stat->numbytes : 0;
 
 	duration = StatData->last - StatData->first;
 	duration += ((double)StatData->msec_last - (double)StatData->msec_first) / 1000.0;

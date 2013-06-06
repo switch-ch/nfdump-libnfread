@@ -161,6 +161,8 @@ src				{ return SRC; }
 dst				{ return DST; }
 next			{ return NEXT; }
 prev			{ return PREV; }
+ingress			{ return INGRESS; }
+egress			{ return EGRESS; }
 previous		{ return PREV; }
 bgpnext			{ return BGPNEXTHOP; }
 router			{ return ROUTER; }
@@ -172,6 +174,24 @@ server			{ return SERVER; }
 app				{ return APP; }
 latency			{ return LATENCY; }
 sysid			{ return SYSID; }
+ 
+asa				{ return ASA; 		/* NSEL filter */ }
+event			{ return EVENT; 	/* NEL/NSEL filter */ }
+ignore|invalid|create|add|term|delete|deny	{ 	/* NSEL filter */
+					yylval.s = strdup(yytext);
+					return REASON; 
+				}
+denied			{ return DENIED; 	/* NSEL filter */ }
+xevent			{ return XEVENT; 	/* NSEL filter */ }
+xip				{ return XIP; 		/* NSEL filter */ }
+xport			{ return XPORT; 	/* NSEL filter */ }
+acl				{ return ACL; 		/* NSEL filter */ }
+ace				{ return ACE; 		/* NSEL filter */ }
+xace			{ return XACE; 		/* NSEL filter */ }
+nat 			{ return NAT; 		/* NEL filter */ }
+vrf 			{ return VRF; 		/* NEL filter */ }
+nport			{ return NPORT; 	/* NEL filter */ }
+nip				{ return NIP; 		/* NSEL filter */ }
 and|"&&"		{ return AND; }
 or|"||"			{ return OR; }
 not|"!"			{ return NOT; }
