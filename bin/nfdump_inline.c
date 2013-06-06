@@ -48,26 +48,26 @@ static inline void UpdateStat(stat_record_t	*stat_record, master_record_t *maste
 	switch (master_record->prot) {
 		case IPPROTO_ICMP:
 		case IPPROTO_ICMPV6:
-			stat_record->numflows_icmp++;
+			stat_record->numflows_icmp   += master_record->aggr_flows ? master_record->aggr_flows : 1;
 			stat_record->numpackets_icmp += master_record->dPkts;
 			stat_record->numbytes_icmp   += master_record->dOctets;
 			break;
 		case IPPROTO_TCP:
-			stat_record->numflows_tcp++;
+			stat_record->numflows_tcp   += master_record->aggr_flows ? master_record->aggr_flows : 1;
 			stat_record->numpackets_tcp += master_record->dPkts;
 			stat_record->numbytes_tcp   += master_record->dOctets;
 			break;
 		case IPPROTO_UDP:
-			stat_record->numflows_udp++;
+			stat_record->numflows_udp   += master_record->aggr_flows ? master_record->aggr_flows : 1;
 			stat_record->numpackets_udp += master_record->dPkts;
 			stat_record->numbytes_udp   += master_record->dOctets;
 			break;
 		default:
-			stat_record->numflows_other++;
+			stat_record->numflows_other   += master_record->aggr_flows ? master_record->aggr_flows : 1;
 			stat_record->numpackets_other += master_record->dPkts;
 			stat_record->numbytes_other   += master_record->dOctets;
 	}
-	stat_record->numflows++;
+	stat_record->numflows   += master_record->aggr_flows ? master_record->aggr_flows : 1;
 	stat_record->numpackets	+= master_record->dPkts;
 	stat_record->numbytes 	+= master_record->dOctets;
 

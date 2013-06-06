@@ -333,6 +333,7 @@ typedef struct common_record_s {
 #define FLAG_IPV6_NH	8
 #define FLAG_IPV6_NHB	16
 #define FLAG_IPV6_EXP	32
+#define FLAG_EVENT		64
 #define FLAG_SAMPLED	128
 
 #define SetFlag(var, flag) 		(var |= flag)
@@ -915,15 +916,138 @@ typedef struct tpl_ext_27_s {
 #define EX_RESERVED_8	35
 #define EX_RESERVED_9	36
 
-#define EX_NSEL_0		37
-#define EX_NSEL_1		38
-#define EX_NSEL_2		39
-#define EX_NSEL_3		40
-#define EX_NSEL_4		41
+/*
+ * NSEL Common block
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                           NF_F_FLOW_CREATE_TIME_MSEC(152)                                             |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                      NF_F_CONN_ID(148)                    |i type(176/8) |i code(177/9) |EVT(40005/233)|    fill      |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |   NF_F_FW_EXT_EVENT(33002)  |            fill2            |
+ * +----+--------------+--------------+--------------+--------------+
+ * * EVT: NF_F_FW_EVENT
+ * * XEVT: NF_F_FW_EXT_EVENT
+ */
+#define EX_NSEL_COMMON	37
+typedef struct tpl_ext_37_s {
+	uint64_t	flow_start;
+	uint32_t	conn_id;
+	union {
+		struct {
+#ifdef WORDS_BIGENDIAN
+			uint8_t		icmp_type;
+			uint8_t		icmp_code;
+#else
+			uint8_t		icmp_code;
+			uint8_t		icmp_type;
+#endif
+		};
+		uint16_t nsel_icmp;
+	};
+	uint8_t		fw_event;
+	uint8_t		fill;
+	uint16_t	fw_xevent;
+	uint16_t	fill2;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_37_t;
 
-#define EX_NEL_0		42
-#define EX_NEL_1		43
-#define EX_NEL_2		44
+/*
+ * NSEL xlate ports
+ * +----+--------------+--------------+--------------+--------------+
+ * |  0 |  NF_F_XLATE_SRC_PORT(40003) |  NF_F_XLATE_DST_PORT(40004) |
+ * +----+--------------+--------------+--------------+--------------+
+ */
+#define EX_NSEL_XLATE_PORTS	38
+typedef struct tpl_ext_38_s {
+	uint16_t	xlate_src_port;
+	uint16_t	xlate_dst_port;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_38_t;
+
+/*
+ * NSEL xlate v4 IP address
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |           NF_F_XLATE_SRC_ADDR_IPV4(40001)                 |              NF_F_XLATE_DST_ADDR_IPV4(40002)              |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NSEL_XLATE_IP_v4	39
+typedef struct tpl_ext_39_s {
+	uint32_t	xlate_src_ip;
+	uint32_t	xlate_dst_ip;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_39_t;
+
+/*
+ * NSEL xlate v6 IP address - not yet implemented by CISCO
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                                         xlate src ip (xx - unknown)                                   |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                                                         xlate src ip (xx - unknown)                                   |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |                                                         xlate dst ip (xx - unknown)                                   |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  3 |                                                         xlate dst ip (xx - unknown)                                   |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NSEL_XLATE_IP_v6	40
+typedef struct tpl_ext_40_s {
+	uint64_t	xlate_src_ip[2];
+	uint64_t	xlate_dst_ip[2];
+	uint8_t		data[4];	// points to further data
+} tpl_ext_40_t;
+
+
+/*
+ * NSEL ACL ingress/egress acl ID
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                            NF_F_INGRESS_ACL_ID(33000)                                                 |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                 NF_F_INGRESS_ACL_ID(33000)                |               NF_F_EGRESS_ACL_ID(33001)                   |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |                                            NF_F_EGRESS_ACL_ID(33001)                                                  |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NSEL_ACL		41
+typedef struct tpl_ext_41_s {
+	uint32_t	ingress_acl_id[3];
+	uint32_t	egress_acl_id[3];
+	uint8_t		data[4];	// points to further data
+} tpl_ext_41_t;
+
+/*
+ * NSEL ACL username
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                                  NF_F_USERNAME(40000)                                                 |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                                                                                                                       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |                                                                                                                       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NSEL_USER	42
+typedef struct tpl_ext_42_s {
+	char		username[24];
+	uint8_t		data[4];	// points to further data
+} tpl_ext_42_t;
+
+/*
+ * NSEL ACL username max
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                                  NF_F_USERNAME(40000)                                                 |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * | .. |                                                                                                                       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  8 |                                                                                                                       |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NSEL_USER_MAX 43
+typedef struct tpl_ext_43_s {
+	char		username[72];
+	uint8_t		data[4];	// points to further data
+} tpl_ext_43_t;
+
+
+#define EX_NSEL_RESERVED 44
 
 /*
  * nprobe extensions
@@ -946,6 +1070,59 @@ typedef struct tpl_ext_latency_s {
 	uint64_t	appl_latency_usec;
 	uint8_t		data[4];	// points to further data
 } tpl_ext_latency_t;
+
+/*
+ * NEL xlate ports
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |NAT_EVENT(230)|     flags    |            fill             | NF_N_POST_NAPT_SRC_PORT(227)| NF_N_POST_NAPT_DST_PORT(228)|
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                  NF_N_INGRESS_VRFID(234)                  |
+ * +----+--------------+--------------+--------------+--------------+
+ */
+#define EX_NEL_COMMON 46
+typedef struct tpl_ext_46_s {
+	uint8_t		nat_event;
+	uint8_t		flags;
+	uint16_t	fill;
+	uint16_t	post_src_port;
+	uint16_t	post_dst_port;
+	uint32_t	ingress_vrfid;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_46_t;
+
+/*
+ * NEL global v4 IP address
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |              NF_N_NAT_INSIDE_GLOBAL_IPV4(225)             |             NF_N_NAT_OUTSIDE_GLOBAL_IPV4(226)             |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NEL_GLOBAL_IP_v4	47
+typedef struct tpl_ext_47_s {
+	uint32_t	nat_inside;
+	uint32_t	nat_outside;
+	uint8_t		data[4];	// points to further data
+} tpl_ext_47_t;
+
+/*
+ * NEL global v6 IP address - not yet implemented by CISCO
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  0 |                                            global inside ip (xx - unknown)                                            |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  1 |                                            global inside ip (xx - unknown)                                            |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  2 |                                            global outside ip (xx - unknown)                                           |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * |  3 |                                            global outside ip (xx - unknown)                                           |
+ * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ */
+#define EX_NEL_GLOBAL_IP_v6	48
+typedef struct tpl_ext_48_s {
+	uint64_t	nat_inside[2];
+	uint64_t	nat_outside[2];
+	uint8_t		data[4];	// points to further data
+} tpl_ext_48_t;
+
+#define EX_NEL_RESERVED	49
 
 
 /* 
@@ -992,7 +1169,20 @@ typedef struct extension_map_s {
 
 
 // see nfx.c - extension_descriptor
+#ifdef NEL
+// Defaults for NEL
+#define DefaultExtensions  "1,31,32"
+#endif
+
+#ifdef NSEL
+// Defaults for NSEL
+#define DefaultExtensions  "1,8,26,27,28,29,30"
+#endif
+
+#ifndef DefaultExtensions
+// Collector netflow defaults
 #define DefaultExtensions  "1,2"
+#endif
 
 /*
  * nfcapd writes an info stat record for each new exporter
@@ -1196,18 +1386,24 @@ typedef struct master_record_s {
 #	define ShiftTos  			56
 #endif
 
-	// extension 8
 	uint16_t	srcport;		// index 3	0xffff'0000'0000'0000
 	uint16_t	dstport;		// index 3  0x0000'ffff'0000'0000
+
 	union {
 		struct {
-			uint8_t	dst_tos;	// index 3  0x0000'0000'ff00'0000
-			uint8_t	dir;		// index 3  0x0000'0000'00ff'0000
-			uint8_t	src_mask;	// index 3  0x0000'0000'0000'ff00
-			uint8_t	dst_mask;	// index 3  0x0000'0000'0000'00ff
+#ifdef WORDS_BIGENDIAN
+			uint8_t		icmp_type;	// index 3  0x0000'0000'ff00'0000
+			uint8_t		icmp_code;	// index 3  0x0000'0000'00ff'0000
+#else
+			// little endian confusion ...
+			uint8_t		icmp_code;	
+			uint8_t		icmp_type;
+#endif
 		};
-		uint32_t	any;
+		uint16_t icmp;
 	};
+	uint16_t		_fill;
+
 #ifdef WORDS_BIGENDIAN
 #	define OffsetPort 			3
 #	define MaskSrcPort			0xffff000000000000LL
@@ -1216,25 +1412,10 @@ typedef struct master_record_s {
 #	define MaskDstPort			0x0000ffff00000000LL
 #	define ShiftDstPort 		32	
 
-#	define MaskICMPtype			0x0000ff0000000000LL
-#	define ShiftICMPtype 		40
-#	define MaskICMPcode			0x000000ff00000000LL
-#	define ShiftICMPcode 		32
-
-#	define OffsetDstTos			3
-#	define MaskDstTos			0x00000000ff000000LL
-#	define ShiftDstTos  		24
-
-#	define OffsetDir			3
-#	define MaskDir				0x0000000000ff0000LL
-#	define ShiftDir  			16
-
-#	define OffsetMask			3
-#	define MaskSrcMask			0x000000000000ff00LL
-#	define ShiftSrcMask  		8
-
-#	define MaskDstMask			0x00000000000000ffLL
-#	define ShiftDstMask 		0
+#	define MaskICMPtype			0x00000000ff000000LL
+#	define ShiftICMPtype 		24
+#	define MaskICMPcode			0x0000000000ff0000LL
+#	define ShiftICMPcode 		16
 
 #else
 #	define OffsetPort 			3
@@ -1244,25 +1425,10 @@ typedef struct master_record_s {
 #	define MaskDstPort			0x00000000ffff0000LL
 #	define ShiftDstPort 		16
 
-#	define MaskICMPtype			0x00000000ff000000LL
-#	define ShiftICMPtype 		24
-#	define MaskICMPcode			0x0000000000ff0000LL
-#	define ShiftICMPcode 		16
-
-#	define OffsetDstTos			3
-#	define MaskDstTos			0x000000ff00000000LL
-#	define ShiftDstTos  		32
-
-#	define OffsetDir			3
-#	define MaskDir				0x0000ff0000000000LL
-#	define ShiftDir  			40
-
-#	define OffsetMask			3
-#	define MaskSrcMask			0x00ff000000000000LL
-#	define ShiftSrcMask 		48
-
-#	define MaskDstMask			0xff00000000000000LL
-#	define ShiftDstMask  		56
+#	define MaskICMPtype			0x0000ff0000000000LL
+#	define ShiftICMPtype 		40
+#	define MaskICMPcode			0x000000ff00000000LL
+#	define ShiftICMPcode 		32
 #endif
 
 	// extension 4 / 5
@@ -1420,26 +1586,67 @@ typedef struct master_record_s {
 #	define OffsetBGPNexthopv6b	15
 #endif
 
+	// extension 8
+	union {
+		struct {
+			uint8_t	dst_tos;	// index 16 0xff00'0000'0000'0000
+			uint8_t	dir;		// index 16 0x00ff'0000'0000'0000
+			uint8_t	src_mask;	// index 16 0x0000'ff00'0000'0000
+			uint8_t	dst_mask;	// index 16 0x0000'00ff'0000'0000
+		};
+		uint32_t	any;
+	};
+
 	// extension 13
-	uint16_t	src_vlan;		// index 16 0xffff'0000'0000'0000
-	uint16_t	dst_vlan;		// index 16 0x0000'ffff'0000'0000
-	uint32_t	fill1;			// align 64bit word
+	uint16_t	src_vlan;		// index 16 0x0000'0000'ffff'0000
+	uint16_t	dst_vlan;		// index 16 0x0000'0000'0000'ffff
 
 #ifdef WORDS_BIGENDIAN
-#	define OffsetVlan 			16	
-#	define MaskSrcVlan  		0xffff000000000000LL
-#	define ShiftSrcVlan 		48
+#	define OffsetDstTos			16
+#	define MaskDstTos			0xff00000000000000LL
+#	define ShiftDstTos  		56
 
-#	define MaskDstVlan  		0x0000ffff00000000LL
-#	define ShiftDstVlan 		32
+#	define OffsetDir			16
+#	define MaskDir				0x00ff000000000000LL
+#	define ShiftDir  			48
+
+#	define OffsetMask			16
+#	define MaskSrcMask			0x0000ff0000000000LL
+#	define ShiftSrcMask  		40
+
+#	define MaskDstMask			0x000000ff00000000LL
+#	define ShiftDstMask 		32
+
+#	define OffsetVlan 			16	
+#	define MaskSrcVlan  		0x00000000ffff0000LL
+#	define ShiftSrcVlan 		16
+
+#	define MaskDstVlan  		0x000000000000ffffLL
+#	define ShiftDstVlan 		0
 
 #else
-#	define OffsetVlan 			16	
-#	define MaskSrcVlan  		0x000000000000ffffLL
-#	define ShiftSrcVlan 		0
+#	define OffsetDstTos			16
+#	define MaskDstTos			0x00000000000000ffLL
+#	define ShiftDstTos  		0
 
-#	define MaskDstVlan  		0x00000000ffff0000LL
-#	define ShiftDstVlan 		16
+#	define OffsetDir			16
+#	define MaskDir				0x000000000000ff00LL
+#	define ShiftDir  			8
+
+#	define OffsetMask			16
+#	define MaskSrcMask			0x0000000000ff0000LL
+#	define ShiftSrcMask  		16
+
+#	define MaskDstMask			0x00000000ff000000LL
+#	define ShiftDstMask 		24
+
+#	define OffsetVlan 			16	
+#	define MaskSrcVlan  		0x0000ffff00000000LL
+#	define ShiftSrcVlan 		32
+
+#	define MaskDstVlan  		0xffff000000000000LL
+#	define ShiftDstVlan 		48
+
 #endif
 
 	// extension 14 / 15
@@ -1565,6 +1772,195 @@ typedef struct master_record_s {
 #	define ShiftBGPadjNext		0
 #	define MaskBGPadjPrev		0xFFFFFFFF00000000LL
 #	define ShiftBGPadjPrev		32
+#endif
+
+	// NSEL extensions
+#ifdef NSEL 
+#define NSEL_BASE_OFFSET     (offsetof(master_record_t, conn_id) >> 3)
+
+	// common block
+#   define OffsetConnID  NSEL_BASE_OFFSET
+	uint32_t	conn_id;			// index OffsetConnID    0xffff'ffff'0000'0000
+	uint8_t		fw_event;			// index OffsetConnID    0x0000'0000'ff00'0000
+	uint8_t		fill3;				// index OffsetConnID    0x0000'0000'00ff'0000
+	uint16_t	fw_xevent;			// index OffsetConnID    0x0000'0000'0000'ffff
+	uint64_t	flow_start;			// index OffsetConnID +1 0x1111'1111'1111'1111
+#ifdef WORDS_BIGENDIAN
+#	define MaskConnID		0xFFFFFFFF00000000LL
+#	define ShiftConnID		32
+#	define MaskFWevent		0x00000000FF000000LL
+#	define ShiftFWevent		24
+#	define MaskFWXevent		0x000000000000FFFFLL
+#	define ShiftFWXevent	0
+#else
+#	define MaskConnID		0x00000000FFFFFFFFLL
+#	define ShiftConnID		0
+#	define MaskFWevent		0x000000FF00000000LL
+#	define ShiftFWevent		32
+#	define MaskFWXevent		0xFFFF000000000000LL
+#	define ShiftFWXevent	48
+#endif
+
+	// xlate ip/port
+#   define OffsetXLATEPort NSEL_BASE_OFFSET+2
+	uint16_t	xlate_src_port;		// index OffsetXLATEPort 0xffff'0000'0000'0000
+	uint16_t	xlate_dst_port;		// index OffsetXLATEPort 0x0000'ffff'0000'0000
+	uint32_t	xlate_flags;
+#   define OffsetXLATESRCIP NSEL_BASE_OFFSET+3
+	ip_addr_t	xlate_src_ip;		// ipv4  OffsetXLATESRCIP +1 0x0000'0000'ffff'ffff
+									// ipv6	 OffsetXLATESRCIP 	 0xffff'ffff'ffff'ffff
+									// ipv6	 OffsetXLATESRCIP	 0xffff'ffff'ffff'ffff
+
+	ip_addr_t	xlate_dst_ip;		// ipv4  OffsetXLATEDSTIP +1 0x0000'0000'ffff'ffff
+									// ipv6	 OffsetXLATEDSTIP 	 0xffff'ffff'ffff'ffff
+									// ipv6	 OffsetXLATEDSTIP 	 0xffff'ffff'ffff'ffff
+#ifdef WORDS_BIGENDIAN
+#	define MaskXLATESRCPORT	 0xFFFF000000000000LL
+#	define ShiftXLATESRCPORT 48
+#	define MaskXLATEDSTPORT	 0x0000FFFF00000000LL
+#	define ShiftXLATEDSTPORT 32
+
+#	define OffsetXLATESRCv4	 OffsetXLATESRCIP+1
+#	define MaskXLATEIPv4  	 0x00000000fFFFFFFFLL
+#	define ShiftXLATEIPv4 	 0
+
+#	define OffsetXLATESRCv6a OffsetXLATESRCIP
+#	define OffsetXLATESRCv6b OffsetXLATESRCIP+1
+
+#	define OffsetXLATEDSTv6a OffsetXLATESRCIP+2
+#	define OffsetXLATEDSTv6b OffsetXLATESRCIP+3
+
+#else
+#	define MaskXLATESRCPORT	 0x000000000000FFFFLL
+#	define ShiftXLATESRCPORT 0
+#	define MaskXLATEDSTPORT	 0x00000000FFFF0000LL
+#	define ShiftXLATEDSTPORT 16
+
+#	define OffsetXLATESRCv4	 OffsetXLATESRCIP+1
+#	define MaskXLATEIPv4  	 0xFFFFFFFF00000000LL
+#	define ShiftXLATEIPv4 	 32
+
+#	define OffsetXLATESRCv6a OffsetXLATESRCIP
+#	define OffsetXLATESRCv6b OffsetXLATESRCIP+1
+
+#	define OffsetXLATEDSTv6a OffsetXLATESRCIP+2
+#	define OffsetXLATEDSTv6b OffsetXLATESRCIP+3
+
+#endif
+
+
+	// ingress/egress ACL id
+#   define OffsetIngressAclId NSEL_BASE_OFFSET+7
+#	define OffsetIngressAceId NSEL_BASE_OFFSET+7
+#	define OffsetIngressGrpId NSEL_BASE_OFFSET+8
+#	define OffsetEgressAclId  NSEL_BASE_OFFSET+8
+#	define OffsetEgressAceId  NSEL_BASE_OFFSET+9
+#	define OffsetEgressGrpId  NSEL_BASE_OFFSET+9
+	uint32_t ingress_acl_id[3];	// index OffsetIngressAclId   0xffff'ffff'0000'0000
+								// index OffsetIngressAceId   0x0000'0000'ffff'ffff
+								// index OffsetIngressGrpId   0xffff'ffff'0000'0000
+	uint32_t egress_acl_id[3];	// index OffsetEgressAclId	  0x0000'0000'ffff'ffff
+								// index OffsetEgressAceId	  0xffff'ffff'0000'0000
+								// index OffsetEgressGrpId	  0x0000'0000'ffff'ffff
+#ifdef WORDS_BIGENDIAN
+#define MaskIngressAclId	0xffffffff00000000LL
+#define ShiftIngressAclId	32
+#define MaskIngressAceId	0x00000000ffffffffLL
+#define ShiftIngressAceId	0
+#define MaskIngressGrpId	0xffffffff00000000LL
+#define ShiftIngressGrpId	32
+#define MaskEgressAclId		0x00000000ffffffffLL
+#define ShiftEgressAclId	0
+#define MaskEgressAceId		0xffffffff00000000LL
+#define ShiftEgressAceId	32
+#define MaskEgressGrpId		0x00000000ffffffffLL
+#define ShiftEgressGrpId	0
+#else
+#define MaskIngressAclId	0x00000000ffffffffLL
+#define ShiftIngressAclId	0
+#define MaskIngressAceId	0xffffffff00000000LL
+#define ShiftIngressAceId	32
+#define MaskIngressGrpId	0x00000000ffffffffLL
+#define ShiftIngressGrpId	0
+#define MaskEgressAclId		0xffffffff00000000LL
+#define ShiftEgressAclId	32
+#define MaskEgressAceId		0x00000000ffffffffLL
+#define ShiftEgressAceId	0
+#define MaskEgressGrpId		0xffffffff00000000LL
+#define ShiftEgressGrpId	32
+#endif
+
+	// username
+#	define OffsetUsername  NSEL_BASE_OFFSET+10
+	char username[72];
+
+#endif
+
+	// NEL extensions
+#ifdef NEL 
+#define NEL_BASE_OFFSET     (offsetof(master_record_t, nat_event) >> 3)
+	// common block
+#   define OffsetNELcommon  NEL_BASE_OFFSET
+#   define OffsetVRFID  	NEL_BASE_OFFSET+1
+	uint8_t		nat_event;				// OffsetNELcommon 0xff00'00000'0000'0000
+	uint8_t		nat_flags;
+	uint16_t	nat_fill;
+	uint16_t	post_src_port;			// OffsetNELcommon 0x0000'0000'ffff'0000
+	uint16_t	post_dst_port;			// OffsetNELcommon 0x0000'0000'0000'ffff
+	uint32_t	ingress_vrfid;			// OffsetVRFID	   0xffff'ffff'0000'0000
+
+#ifdef WORDS_BIGENDIAN
+#	define MasNATevent		0xFF00000000000000LL
+#	define ShiftNATevent	56
+#	define MaskPostSRCPort	0x00000000FFFF0000LL
+#	define ShiftPostSRCPort	16
+#	define MaskPostDSTPort	0x000000000000FFFFLL
+#	define ShiftPostDSTPort	0
+#	define MaskVRFID		0xFFFFFFFF00000000LL
+#	define ShiftVRFID		32
+#else
+#	define MasNATevent		0x00000000000000FFLL
+#	define ShiftNATevent	0
+#	define MaskPostSRCPort	0x0000FFFF00000000LL
+#	define ShiftPostSRCPort	32
+#	define MaskPostDSTPort	0xFFFF000000000000LL
+#	define ShiftPostDSTPort	48
+#	define MaskVRFID		0x00000000FFFFFFFFLL
+#	define ShiftVRFID		0
+#endif
+
+#   define OffsetGlobalInsideIP NEL_BASE_OFFSET+2
+	ip_addr_t	nat_inside;		// ipv4  OffsetGlobalInsideIP +1 0x0000'0000'ffff'ffff
+								// ipv6	 OffsetGlobalInsideIP 	 0xffff'ffff'ffff'ffff
+								// ipv6	 OffsetGlobalInsideIP	 0xffff'ffff'ffff'ffff
+
+	ip_addr_t	nat_outside;	// ipv4  OffsetGlobalOutsideIP +1 0x0000'0000'ffff'ffff
+								// ipv6	 OffsetGlobalOutsideIP 	 0xffff'ffff'ffff'ffff
+								// ipv6	 OffsetGlobalOutsideIP 	 0xffff'ffff'ffff'ffff
+#ifdef WORDS_BIGENDIAN
+#	define OffsetGlobalInsidev4	  OffsetGlobalInsideIP+1
+#	define MaskGlobalIPv4  	 	  0x00000000fFFFFFFFLL
+#	define ShiftGlobalIPv4 	 	  0
+
+#	define OffsetGlobalInsidev6a  OffsetGlobalInsideIP
+#	define OffsetGlobalInsidev6b  OffsetGlobalInsideIP+1
+
+#	define OffsetGlobalOutsidev6a OffsetGlobalInsideIP+2
+#	define OffsetGlobalOutsidev6b OffsetGlobalInsideIP+3
+
+#else
+#	define OffsetGlobalInsidev4	  OffsetGlobalInsideIP+1
+#	define MaskGlobalIPv4  	 	  0xFFFFFFFF00000000LL
+#	define ShiftGlobalIPv4 	 	  32
+
+#	define OffsetGlobalInsidev6a  OffsetGlobalInsideIP
+#	define OffsetGlobalInsidev6b  OffsetGlobalInsideIP+1
+
+#	define OffsetGlobalOutsidev6a OffsetGlobalInsideIP+2
+#	define OffsetGlobalOutsidev6b OffsetGlobalInsideIP+3
+
+#endif
+
 #endif
 
 	// nprobe extensions

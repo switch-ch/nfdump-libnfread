@@ -10,15 +10,14 @@ is the netflow capture daemon of the nfdump tools. It reads netflow
 data from the network and stores it into files. The output file
 is automatically rotated and renamed every n minutes \- typically
 5 min \- according the timestamp YYYYMMddhhmm of the interval e.g. 
-nfcapd.200907110845 contains the data from July 11th 2009 08:45 onward.
+nfcapd.201107110845 contains the data from July 11th 2011 08:45 onward.
 .P
 Netflow version v1, v5, v7 and v9 and IPFIX are transparently supported.
-IPFIX support is experimental for this release.
 .P
 Extensions: nfcapd supports a large number of v9 tags. In order to optimise
 disk space and performance, v9 tags are grouped into a number of extensions
 which may or may not be stored into the data file. Therefore the v9 templates
-configured on the exporter may be tuned with the collector. Only the tags 
+configured on the exporter may be tuned according the collector. Only those tags 
 common to both are stored into the data files.
 .P
 Sampling: By default, the sampling rate is set to 1 (unsampled) or to any
@@ -33,6 +32,12 @@ sampling rate.  The total number of flows is not changed as this is not
 accurate enough. (Small flows versus large flows) If the default sampling rate
 given by -s is negative, this will hard overwrite any device specific 
 announced sampling rates.
+.P
+NSEL/ASA Support: nfcapd can be compiled with NSEL/ASA support included. See
+notes on NSEL/ASA
+.P
+NEL (NAT Event logging): nfcapd can be compiled with CISCO NEL support included.
+See notes on NEL.
 .P
 .SH OPTIONS
 .TP 3
@@ -130,29 +135,17 @@ records are ignored.
    Extensions:
 .PD 0
 .RS 4
-v5/v7/v9 extensions:
+v5/v7/v9/IPFIX extensions:
 .P
  1 input/output interface SNMP numbers.
 .P
  2 src/dst AS numbers.
 .P
- 3 src/dst mask, (dst)TOS, direction, 
+ 3 src/dst mask, (dst)TOS, direction.
 .P
- 4 Next hop IP addr
+ 4 line Next hop IP addr line
 .P
-
-.P
-Additional information for v5/v7/v9:
-.P
-13 IP address of exporting router
-.P
-14 engine type/ID of exporter
-.P
-
-.P
-v9 only extensions:
-.P
- 5 BGP next hop IP addr
+ 5 line BGP next hop IP addr line
 .P
  6 src/dst vlan id labels
 .P
@@ -168,13 +161,49 @@ v9 only extensions:
 .P
 12 MPLS labels 1\-10
 .P
-
-By default extension 1 and 2 are selected, which provides compatibility with 
-earlier nfdump version.  Extensions can be added/deleted by specifying a ',' 
-separated list of extension ids. Each id may be prepended by an optional 
-sign +/\- to add or remove a given id from the extension list. The string 'all'
-means all extensions.
+13 Exporting router IPv4/IPv6 address
 .P
+14 Exporting router ID
+.P
+15 BGP adjacent prev/next AS
+.P
+16 time stamp flow received by the collector
+.P
+
+.P
+NSEL/ASA extensions
+.P
+26 NSEL Common block
+.P
+27 NSEL xlate ports
+.P
+28 NSEL xlate IPv4/IPv6 addr
+.P
+29 NSEL ACL ingress/egress acl ID
+.P
+30 NSEL username
+.P
+
+.P
+NEL extensions
+.P
+31 NEL Common block
+.P
+32 NEL xlate IPv4/IPv6 addr
+.P
+
+.P
+nprobe extensions
+.P
+64 nprobe client/server/application latency"},
+
+.B IMPORTANT: 
+By default only extension 1 and 2 are selected
+Extensions can be added/deleted by specifying a ',' separated 
+list of extension ids. Each id may be prepended by an optional 
+sign +/\- to add or remove a given id from the extension list. 
+Shortcuts: The string 'all' means all extensions. The strings
+ 'nsel' and 'nel' enable all NSEL or NEL extensions respectively.
 
 .P
 Examples: 
@@ -187,9 +216,13 @@ Examples:
 .P
 \-T \-1,4      Removes default extension 1 and adds extension 4
 .P
+\-T nsel      Enables all required ASA?NSEL extensions
+.P
+\-T nel       Enables all required nell extensions
+.P
 
 .P
-Note: Only those v9 tags common to the exported v9 templates and the enabled
+Note: Only those tags in common with the exporting device and enabled 
 extensions at the collector side are stored into the data files. A detailed 
 list which v9 tags are mapped into which extensions is given in the section 
 .B NOTES

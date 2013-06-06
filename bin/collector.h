@@ -141,6 +141,10 @@ int AddFlowSource(FlowSource_t **FlowSource, char *ident);
 
 int AddDefaultFlowSource(FlowSource_t **FlowSource, char *ident, char *path);
 
+int SetDynamicSourcesDir(FlowSource_t **FlowSource, char *dir);
+
+FlowSource_t *AddDynamicSource(FlowSource_t **FlowSource, struct sockaddr_storage *ss);
+
 int InitExtensionMapList(FlowSource_t *fs);
 
 int AddExtensionMap(FlowSource_t *fs, extension_map_t *map);

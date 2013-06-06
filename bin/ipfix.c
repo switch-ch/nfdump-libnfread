@@ -892,20 +892,20 @@ ipfix_template_elements_std_t *NextElement;
 int i;
 uint16_t Offset = 0;
 
-	// clear helper tables
-	memset((void *)cache.common_extensions, 0,  (Max_num_extensions+1)*sizeof(uint32_t));
-	for (i=1; ipfix_element_map[i].id != 0; i++ ) {
-		uint32_t Type = ipfix_element_map[i].id;
-		if ( ipfix_element_map[i].id == ipfix_element_map[i-1].id )
-			continue;
-		cache.lookup_info[Type].index   = i;
-		cache.lookup_info[Type].found   = 0;
-		cache.lookup_info[Type].offset  = 0;
-		cache.lookup_info[Type].length  = 0;
-	}
-
 	// a template flowset can contain multiple records ( templates )
 	while ( size_left ) {
+
+		// clear helper tables
+		memset((void *)cache.common_extensions, 0,  (Max_num_extensions+1)*sizeof(uint32_t));
+		memset((void *)cache.lookup_info, 0, 65536 * sizeof(struct element_param_s));
+		for (i=1; ipfix_element_map[i].id != 0; i++ ) {
+			uint32_t Type = ipfix_element_map[i].id;
+			if ( ipfix_element_map[i].id == ipfix_element_map[i-1].id )
+				continue;
+			cache.lookup_info[Type].index   = i;
+			// other elements cleard be memset
+		}
+
 		uint32_t id, count, size_required;
 		uint32_t num_extensions = 0;
 

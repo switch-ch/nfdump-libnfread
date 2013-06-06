@@ -48,6 +48,7 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <ctype.h>
 
 #ifdef HAVE_STDINT_H
@@ -67,7 +68,7 @@
  */
 static void  yyerror(char *msg);
 
-static uint32_t ChainHosts(uint64_t *hostlist, int num_records, int type);
+static uint32_t ChainHosts(uint64_t *offsets, uint64_t *hostlist, int num_records, int type);
 
 static uint64_t VerifyMac(char *s);
 
@@ -101,14 +102,15 @@ char yyerror_buff[256];
 }
 
 %token ANY IP IF MAC MPLS TOS DIR FLAGS PROTO MASK HOSTNAME NET PORT FWDSTAT IN OUT SRC DST EQ LT GT PREV NEXT
-%token NUMBER STRING IDENT ALPHA_FLAGS PROTOSTR PORTNUM ICMP_TYPE ICMP_CODE ENGINE_TYPE ENGINE_ID AS PACKETS BYTES FLOWS 
-%token PPS BPS BPP DURATION
+%token NUMBER STRING IDENT PORTNUM ICMP_TYPE ICMP_CODE ENGINE_TYPE ENGINE_ID AS PACKETS BYTES FLOWS 
+%token PPS BPS BPP DURATION NOT END
 %token IPV4 IPV6 BGPNEXTHOP ROUTER VLAN
 %token CLIENT SERVER APP LATENCY SYSID
-%token NOT END
+%token ASA REASON DENIED XEVENT XIP XPORT INGRESS EGRESS ACL ACE XACE
+%token NAT ADD EVENT VRF NPORT NIP
 %type <value>	expr NUMBER PORTNUM ICMP_TYPE ICMP_CODE
-%type <s>	STRING IDENT ALPHA_FLAGS PROTOSTR 
-%type <param> dqual term comp 
+%type <s> STRING REASON 
+%type <param> dqual term comp acl inout
 %type <list> iplist ullist
 
 %left	'+' OR
@@ -179,7 +181,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 
 	| dqual PACKETS comp NUMBER { 
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case DIR_UNSPEC:
 			case DIR_IN: 
 				$$.self = NewBlock(OffsetPackets, MaskPackets, $4, $3.comp, FUNC_NONE, NULL); 
@@ -197,7 +199,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 
 	| dqual BYTES comp NUMBER {	
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case DIR_UNSPEC:
 			case DIR_IN: 
 				$$.self = NewBlock(OffsetBytes, MaskBytes, $4, $3.comp, FUNC_NONE, NULL); 
@@ -238,7 +240,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			YYABORT;
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case DIR_UNSPEC:
 			case SOURCE:
 				$$.self = NewBlock(OffsetTos, MaskTos, ($4 << ShiftTos) & MaskTos, $3.comp, FUNC_NONE, NULL); 
@@ -314,25 +316,26 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			// could not resolv host => 'not any'
 			$$.self = Invert(NewBlock(OffsetProto, 0, 0, CMP_EQ, FUNC_NONE, NULL )); 
 		} else {
+			uint64_t offsets[4] = {OffsetSrcIPv6a, OffsetSrcIPv6b, OffsetDstIPv6a, OffsetDstIPv6b };
 			if ( af && (( af == PF_INET && bytes != 4 ) || ( af == PF_INET6 && bytes != 16 ))) {
 				yyerror("incomplete IP address");
 				YYABORT;
 			}
 
-			switch ( $$.direction ) {
+			switch ( $1.direction ) {
 				case SOURCE:
 				case DESTINATION:
-					$$.self = ChainHosts(IPstack, num_ip, $$.direction);
+					$$.self = ChainHosts(offsets, IPstack, num_ip, $1.direction);
 					break;
 				case DIR_UNSPEC:
 				case SOURCE_OR_DESTINATION: {
-					uint32_t src = ChainHosts(IPstack, num_ip, SOURCE);
-					uint32_t dst = ChainHosts(IPstack, num_ip, DESTINATION);
+					uint32_t src = ChainHosts(offsets, IPstack, num_ip, SOURCE);
+					uint32_t dst = ChainHosts(offsets, IPstack, num_ip, DESTINATION);
 					$$.self = Connect_OR(src, dst);
 					} break;
 				case SOURCE_AND_DESTINATION: {
-					uint32_t src = ChainHosts(IPstack, num_ip, SOURCE);
-					uint32_t dst = ChainHosts(IPstack, num_ip, DESTINATION);
+					uint32_t src = ChainHosts(offsets, IPstack, num_ip, SOURCE);
+					uint32_t dst = ChainHosts(offsets, IPstack, num_ip, DESTINATION);
 					$$.self = Connect_AND(src, dst);
 					} break;
 				default:
@@ -346,9 +349,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 
 	| dqual IP IN '[' iplist ']' { 	
 
-		$$.direction = $1.direction;
-
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = NewBlock(OffsetSrcIPv6a, MaskIPv6, 0 , CMP_IPLIST, FUNC_NONE, (void *)$5 );
 				break;
@@ -482,13 +483,12 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| dqual PORT comp NUMBER {	
-		$$.direction = $1.direction;
 		if ( $4 > 65535 ) {
 			yyerror("Port outside of range 0..65535");
 			YYABORT;
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = NewBlock(OffsetPort, MaskSrcPort, ($4 << ShiftSrcPort) & MaskSrcPort, $3.comp, FUNC_NONE, NULL );
 				break;
@@ -519,8 +519,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 		struct ULongListNode *node;
 		ULongtree_t *root = NULL;
 
-		$$.direction = $1.direction;
-		if ( $$.direction == DIR_UNSPEC || $$.direction == SOURCE_OR_DESTINATION || $$.direction == SOURCE_AND_DESTINATION ) {
+		if ( $1.direction == DIR_UNSPEC || $1.direction == SOURCE_OR_DESTINATION || $1.direction == SOURCE_AND_DESTINATION ) {
 			// src and/or dst port
 			// we need a second rbtree due to different shifts for src and dst ports
 			root = malloc(sizeof(ULongtree_t));
@@ -547,7 +546,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			}
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				RB_FOREACH(node, ULongtree, (ULongtree_t *)$5) {
 					node->value = (node->value << ShiftSrcPort) & MaskSrcPort;
@@ -629,15 +628,370 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 		$$.self = NewBlock(OffsetRouterID, MaskEngineID, ($3 << ShiftEngineID) & MaskEngineID, $2.comp, FUNC_NONE, NULL);
 
 	}
+ 
+	| ASA EVENT REASON {
+#ifdef NSEL
+		if ( strncasecmp($3,"ignore", 6) == 0) {
+			$$.self = NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_IGNORE << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if( strncasecmp($3,"create", 6) == 0) {
+			$$.self = NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_CREATE << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if( strncasecmp($3,"term", 4) == 0 || strncasecmp($3,"delete", 6) == 0) {
+			$$.self = NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_DELETE << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if  (strncasecmp($3,"deny", 4) == 0) {
+			$$.self = NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_DENIED << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if  (strncasecmp($3,"alert", 5) == 0) {
+			$$.self = NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_ALERT << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if  (strncasecmp($3,"update", 6) == 0) {
+			$$.self = NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_UPDATE << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL );
+		} else {
+			yyerror("Unknown asa event");
+			YYABORT;
+		}
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| ASA EVENT comp NUMBER {
+#ifdef NSEL
+		if ( $4 > 255 ) {
+			yyerror("Invalid xevent ID");
+			YYABORT;
+		}
+		$$.self = NewBlock(OffsetConnID, MaskFWevent, ( $4 << ShiftFWevent) & MaskFWevent, $3.comp, FUNC_NONE, NULL );
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| ASA EVENT DENIED inout {
+#ifdef NSEL
+		uint64_t xevent = 0;
+		if ( $4.inout == INGRESS ) {
+			xevent = 1001;
+		} else if ( $4.inout == EGRESS ) {
+			xevent = 1002;
+		} else {
+				yyerror("Invalid inout token");
+				YYABORT;
+		}
+		$$.self = Connect_AND(
+			NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_DENIED << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL ),
+			NewBlock(OffsetConnID, MaskFWXevent, ( xevent << ShiftFWXevent) & MaskFWXevent, CMP_EQ, FUNC_NONE, NULL )
+		);
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+	| ASA EVENT DENIED STRING {
+#ifdef NSEL
+		uint64_t xevent = 0;
+		if( strncasecmp($4,"interface", 6) == 0) {
+			xevent = 1003;
+		} else if( strncasecmp($4,"nosyn", 6) == 0) {
+			xevent = 1004;
+		} else {
+			xevent = (uint64_t)strtol($4, (char **)NULL, 10);
+			if ( (xevent == 0 && errno == EINVAL) || xevent > 65535 ) {
+				yyerror("Invalid xevent ID");
+				YYABORT;
+			}
+		}
+		$$.self = Connect_AND(
+			NewBlock(OffsetConnID, MaskFWevent, ( NSEL_EVENT_DENIED << ShiftFWevent) & MaskFWevent, CMP_EQ, FUNC_NONE, NULL ),
+			NewBlock(OffsetConnID, MaskFWXevent, ( xevent << ShiftFWXevent) & MaskFWXevent, CMP_EQ, FUNC_NONE, NULL )
+		);
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| ASA XEVENT comp NUMBER {
+#ifdef NSEL
+		if ( $4 > 65535 ) {
+			yyerror("Invalid xevent ID");
+			YYABORT;
+		}
+		$$.self = NewBlock(OffsetConnID, MaskFWXevent, ( $4 << ShiftFWXevent) & MaskFWXevent, $3.comp, FUNC_NONE, NULL );
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| dqual XIP STRING { 	
+#ifdef NSEL
+		int af, bytes, ret;
+
+		ret = parse_ip(&af, $3, IPstack, &bytes, ALLOW_LOOKUP, &num_ip);
+
+		if ( ret == 0 ) {
+			yyerror("Error parsing IP address.");
+			YYABORT;
+		}
+
+		// ret == -1 will never happen here, as ALLOW_LOOKUP is set
+		if ( ret == -2 ) {
+			// could not resolv host => 'not any'
+			$$.self = Invert(NewBlock(OffsetProto, 0, 0, CMP_EQ, FUNC_NONE, NULL )); 
+		} else {
+			uint64_t offsets[4] = {OffsetXLATESRCv6a, OffsetXLATESRCv6b, OffsetXLATEDSTv6a, OffsetXLATEDSTv6b };
+			if ( af && (( af == PF_INET && bytes != 4 ) || ( af == PF_INET6 && bytes != 16 ))) {
+				yyerror("incomplete IP address");
+				YYABORT;
+			}
+
+			switch ( $1.direction ) {
+				case SOURCE:
+				case DESTINATION:
+					$$.self = ChainHosts(offsets, IPstack, num_ip, $1.direction);
+					break;
+				case DIR_UNSPEC:
+				case SOURCE_OR_DESTINATION: {
+					uint32_t src = ChainHosts(offsets, IPstack, num_ip, SOURCE);
+					uint32_t dst = ChainHosts(offsets, IPstack, num_ip, DESTINATION);
+					$$.self = Connect_OR(src, dst);
+					} break;
+				case SOURCE_AND_DESTINATION: {
+					uint32_t src = ChainHosts(offsets, IPstack, num_ip, SOURCE);
+					uint32_t dst = ChainHosts(offsets, IPstack, num_ip, DESTINATION);
+					$$.self = Connect_AND(src, dst);
+					} break;
+				default:
+					yyerror("This token is not expected here!");
+					YYABORT;
+	
+			} // End of switch
+
+		}
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| dqual XPORT comp NUMBER {	
+#ifdef NSEL
+		if ( $4 > 65535 ) {
+			yyerror("Port outside of range 0..65535");
+			YYABORT;
+		}
+
+		switch ( $1.direction ) {
+			case SOURCE:
+				$$.self = NewBlock(OffsetXLATEPort, MaskXLATESRCPORT, ($4 << ShiftXLATESRCPORT) & MaskXLATESRCPORT, $3.comp, FUNC_NONE, NULL );
+				break;
+			case DESTINATION:
+				$$.self = NewBlock(OffsetXLATEPort, MaskXLATEDSTPORT, ($4 << ShiftXLATEDSTPORT) & MaskXLATEDSTPORT, $3.comp, FUNC_NONE, NULL );
+				break;
+			case DIR_UNSPEC:
+			case SOURCE_OR_DESTINATION:
+				$$.self = Connect_OR(
+					NewBlock(OffsetXLATEPort, MaskXLATESRCPORT, ($4 << ShiftXLATESRCPORT) & MaskXLATESRCPORT, $3.comp, FUNC_NONE, NULL ),
+					NewBlock(OffsetXLATEPort, MaskXLATEDSTPORT, ($4 << ShiftXLATEDSTPORT) & MaskXLATEDSTPORT, $3.comp, FUNC_NONE, NULL )
+				);
+				break;
+			case SOURCE_AND_DESTINATION:
+				$$.self = Connect_AND(
+					NewBlock(OffsetXLATEPort, MaskXLATESRCPORT, ($4 << ShiftXLATESRCPORT) & MaskXLATESRCPORT, $3.comp, FUNC_NONE, NULL ),
+					NewBlock(OffsetXLATEPort, MaskXLATEDSTPORT, ($4 << ShiftXLATEDSTPORT) & MaskXLATEDSTPORT, $3.comp, FUNC_NONE, NULL )
+				);
+				break;
+			default:
+				yyerror("This token is not expected here!");
+				YYABORT;
+		} // End switch
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+
+	}
+
+	| inout acl comp NUMBER {
+#ifdef NSEL
+		uint64_t offset, mask, shift;
+		if ( $1.inout == INGRESS ) {
+			switch ($2.acl) {
+				case ACL:
+					offset = OffsetIngressAclId;
+					mask   = MaskIngressAclId;	
+					shift  = ShiftIngressAclId;
+					break;
+				case ACE:
+					offset = OffsetIngressAceId;
+					mask   = MaskIngressAceId;	
+					shift  = ShiftIngressAceId;
+					break;
+				case XACE:
+					offset = OffsetIngressGrpId;
+					mask   = MaskIngressGrpId;	
+					shift  = ShiftIngressGrpId;
+					break;
+				default:
+					yyerror("Invalid ACL specifier");
+					YYABORT;
+			}
+		} else if ( $1.inout == EGRESS && $$.acl == ACL ) {
+			offset = OffsetEgressAclId;
+			mask   = MaskEgressAclId;	
+			shift  = ShiftEgressAclId;
+		} else {
+			yyerror("ingress/egress syntax error");
+			YYABORT;
+		}
+		$$.self = NewBlock(offset, mask, ($4 << shift) & mask , $3.comp, FUNC_NONE, NULL );
+
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
+
+	| NAT EVENT REASON {
+#ifdef NEL
+		if ( strncasecmp($3,"invalid", 6) == 0) {
+			$$.self = NewBlock(OffsetNELcommon, MasNATevent, ( NEL_EVENT_INVALID << ShiftNATevent) & MasNATevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if( strncasecmp($3,"add", 6) == 0) {
+			$$.self = NewBlock(OffsetNELcommon, MasNATevent, ( NEL_EVENT_ADD << ShiftNATevent) & MasNATevent, CMP_EQ, FUNC_NONE, NULL );
+		} else if( strncasecmp($3,"delete", 4) == 0 || strncasecmp($3,"delete", 6) == 0) {
+			$$.self = NewBlock(OffsetNELcommon, MasNATevent, ( NEL_EVENT_DELETE << ShiftNATevent) & MasNATevent, CMP_EQ, FUNC_NONE, NULL );
+		} else {
+			yyerror("Unknown nat event");
+			YYABORT;
+		}
+#else
+		yyerror("NEL/NAT filters not available");
+		YYABORT;
+#endif
+	}
+
+	| NAT EVENT comp NUMBER {
+#ifdef NEL
+		if ( $4 > 255 ) {
+			yyerror("Invalid event ID");
+			YYABORT;
+		}
+		$$.self = NewBlock(OffsetNELcommon, MasNATevent, ( $4 << ShiftNATevent) & MasNATevent, $3.comp, FUNC_NONE, NULL );
+#else
+		yyerror("NEL/NAT filters not available");
+		YYABORT;
+#endif
+	}
+
+	| INGRESS VRF comp NUMBER {
+#ifdef NEL
+		if ( $4 > 0xFFFFFFFFLL ) {
+			yyerror("Invalid vrf ID");
+			YYABORT;
+		}
+		$$.self = NewBlock(OffsetVRFID, MaskVRFID, ( $4 << ShiftVRFID) & MaskVRFID, $3.comp, FUNC_NONE, NULL );
+#else
+		yyerror("NEL/NAT filters not available");
+		YYABORT;
+#endif
+	}
+
+	| dqual NPORT comp NUMBER {	
+#ifdef NEL
+		if ( $4 > 65535 ) {
+			yyerror("Port outside of range 0..65535");
+			YYABORT;
+		}
+
+		switch ( $1.direction ) {
+			case SOURCE:
+				$$.self = NewBlock(OffsetNELcommon, MaskPostSRCPort, ($4 << ShiftPostSRCPort) & MaskPostSRCPort, $3.comp, FUNC_NONE, NULL );
+				break;
+			case DESTINATION:
+				$$.self = NewBlock(OffsetNELcommon, MaskPostDSTPort, ($4 << ShiftPostDSTPort) & MaskPostDSTPort, $3.comp, FUNC_NONE, NULL );
+				break;
+			case DIR_UNSPEC:
+			case SOURCE_OR_DESTINATION:
+				$$.self = Connect_OR(
+					NewBlock(OffsetNELcommon, MaskPostSRCPort, ($4 << ShiftPostSRCPort) & MaskPostSRCPort, $3.comp, FUNC_NONE, NULL ),
+					NewBlock(OffsetNELcommon, MaskPostDSTPort, ($4 << ShiftPostDSTPort) & MaskPostDSTPort, $3.comp, FUNC_NONE, NULL )
+				);
+				break;
+			case SOURCE_AND_DESTINATION:
+				$$.self = Connect_AND(
+					NewBlock(OffsetNELcommon, MaskPostSRCPort, ($4 << ShiftPostSRCPort) & MaskPostSRCPort, $3.comp, FUNC_NONE, NULL ),
+					NewBlock(OffsetNELcommon, MaskPostDSTPort, ($4 << ShiftPostDSTPort) & MaskPostDSTPort, $3.comp, FUNC_NONE, NULL )
+				);
+				break;
+			default:
+				yyerror("This token is not expected here!");
+				YYABORT;
+		} // End switch
+#else
+		yyerror("NEL/NAT filters not available");
+		YYABORT;
+#endif
+
+	}
+
+	| dqual NIP STRING { 	
+#ifdef NEL
+		int af, bytes, ret;
+
+		ret = parse_ip(&af, $3, IPstack, &bytes, ALLOW_LOOKUP, &num_ip);
+
+		if ( ret == 0 ) {
+			yyerror("Error parsing IP address.");
+			YYABORT;
+		}
+
+		// ret == -1 will never happen here, as ALLOW_LOOKUP is set
+		if ( ret == -2 ) {
+			// could not resolv host => 'not any'
+			$$.self = Invert(NewBlock(OffsetProto, 0, 0, CMP_EQ, FUNC_NONE, NULL )); 
+		} else {
+			uint64_t offsets[4] = {OffsetGlobalInsidev6a, OffsetGlobalInsidev6b, OffsetGlobalOutsidev6a, OffsetGlobalOutsidev6b };
+			if ( af && (( af == PF_INET && bytes != 4 ) || ( af == PF_INET6 && bytes != 16 ))) {
+				yyerror("incomplete IP address");
+				YYABORT;
+			}
+
+			switch ( $1.direction ) {
+				case SOURCE:
+				case DESTINATION:
+					$$.self = ChainHosts(offsets, IPstack, num_ip, $1.direction);
+					break;
+				case DIR_UNSPEC:
+				case SOURCE_OR_DESTINATION: {
+					uint32_t src = ChainHosts(offsets, IPstack, num_ip, SOURCE);
+					uint32_t dst = ChainHosts(offsets, IPstack, num_ip, DESTINATION);
+					$$.self = Connect_OR(src, dst);
+					} break;
+				case SOURCE_AND_DESTINATION: {
+					uint32_t src = ChainHosts(offsets, IPstack, num_ip, SOURCE);
+					uint32_t dst = ChainHosts(offsets, IPstack, num_ip, DESTINATION);
+					$$.self = Connect_AND(src, dst);
+					} break;
+				default:
+					yyerror("This token is not expected here!");
+					YYABORT;
+	
+			} // End of switch
+
+		}
+#else
+		yyerror("NSEL/ASA filters not available");
+		YYABORT;
+#endif
+	}
 
 	| dqual AS comp NUMBER {	
-		$$.direction = $1.direction;
 		if ( $4 > 0xfFFFFFFF || $4 < 0 ) {
 			yyerror("AS number of range");
 			YYABORT;
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = NewBlock(OffsetAS, MaskSrcAS, ($4 << ShiftSrcAS) & MaskSrcAS, $3.comp, FUNC_NONE, NULL );
 				break;
@@ -674,8 +1028,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 		struct ULongListNode *node;
 		ULongtree_t *root = NULL;
 
-		$$.direction = $1.direction;
-		if ( $$.direction == DIR_UNSPEC || $$.direction == SOURCE_OR_DESTINATION || $$.direction == SOURCE_AND_DESTINATION ) {
+		if ( $1.direction == DIR_UNSPEC || $1.direction == SOURCE_OR_DESTINATION || $1.direction == SOURCE_AND_DESTINATION ) {
 			// src and/or dst AS
 			// we need a second rbtree due to different shifts for src and dst AS
 			root = malloc(sizeof(ULongtree_t));
@@ -702,7 +1055,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			}
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				RB_FOREACH(node, ULongtree, (ULongtree_t *)$5) {
 					node->value = (node->value << ShiftSrcAS) & MaskSrcAS;
@@ -736,13 +1089,12 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| dqual MASK NUMBER {	
-		$$.direction = $1.direction;
 		if ( $3 > 255 ) {
 			yyerror("Mask outside of range 0..255");
 			YYABORT;
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = NewBlock(OffsetMask, MaskSrcMask, ($3 << ShiftSrcMask) & MaskSrcMask, CMP_EQ, FUNC_NONE, NULL );
 				break;
@@ -813,9 +1165,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 		IPstack[0] &= mask[0];
 		IPstack[1] &= mask[1];
 
-		$$.direction = $1.direction;
-
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = Connect_AND(
 					NewBlock(OffsetSrcIPv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
@@ -901,8 +1251,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 		IPstack[0] &= mask[0];
 		IPstack[1] &= mask[1];
 
-		$$.direction = $1.direction;
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = Connect_AND(
 					NewBlock(OffsetSrcIPv6b, mask[1], IPstack[1] , CMP_EQ, FUNC_NONE, NULL ),
@@ -953,7 +1302,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			YYABORT;
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case DIR_UNSPEC:
 				$$.self = Connect_OR(
 					NewBlock(OffsetInOut, MaskInput, ($3 << ShiftInput) & MaskInput, CMP_EQ, FUNC_NONE, NULL),
@@ -974,13 +1323,12 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 	
 	| dqual VLAN NUMBER {	
-		$$.direction = $1.direction;
 		if ( $3 > 65535 || $3 < 0 ) {
 			yyerror("VLAN number of range 0..65535");
 			YYABORT;
 		}
 
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case SOURCE:
 				$$.self = NewBlock(OffsetVlan, MaskSrcVlan, ($3 << ShiftSrcVlan) & MaskSrcVlan, CMP_EQ, FUNC_NONE, NULL );
 				break;
@@ -1013,7 +1361,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			yyerror("Invalid MAC address format");
 			YYABORT;
 		}
-		switch ( $$.direction ) {
+		switch ( $1.direction ) {
 			case DIR_UNSPEC: {
 					uint32_t in, out;
 					in  = Connect_OR(
@@ -1266,11 +1614,11 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 
 	}
 
-	| DIR STRING {
+	| DIR inout {
 		uint64_t dir = 0xFF;
-		if ( strcasecmp($2, "ingress") == 0 )
+		if ( $2.inout == INGRESS )
 			dir = 0;
-		else if ( strcasecmp($2, "egress") == 0 )
+		else if ( $2.inout == EGRESS )
 			dir = 1;
 		else {
 			yyerror("Flow direction status of range ingress, egress");
@@ -1531,8 +1879,6 @@ ullist:	NUMBER	{
 
 	;
 
-/* scaling  qualifiers */
-
 /* comparator qualifiers */
 comp:				{ $$.comp = CMP_EQ; }
 	| EQ			{ $$.comp = CMP_EQ; }
@@ -1558,6 +1904,15 @@ dqual:	  			{ $$.direction = DIR_UNSPEC;  			 }
 	| NEXT			{ $$.direction = ADJ_NEXT;				 }
 	;
 
+inout: INGRESS		{ $$.inout	= INGRESS;	}
+	|  EGRESS		{ $$.inout	= EGRESS;   }
+	;
+
+acl:	ACL			{ $$.acl = ACL; 	}
+	|	ACE			{ $$.acl = ACE;		}
+	|	XACE		{ $$.acl = XACE;	}
+	;
+
 expr:	term		{ $$ = $1.self;        }
 	| expr OR  expr	{ $$ = Connect_OR($1, $3);  }
 	| expr AND expr	{ $$ = Connect_AND($1, $3); }
@@ -1579,15 +1934,14 @@ static void  yyerror(char *msg) {
 
 } /* End of yyerror */
 
-static uint32_t ChainHosts(uint64_t *hostlist, int num_records, int type) {
+static uint32_t ChainHosts(uint64_t *offsets, uint64_t *hostlist, int num_records, int type) {
 uint32_t offset_a, offset_b, i, j, block;
-
 	if ( type == SOURCE ) {
-		offset_a = OffsetSrcIPv6a;
-		offset_b = OffsetSrcIPv6b;
+		offset_a = offsets[0];
+		offset_b = offsets[1];
 	} else {
-		offset_a = OffsetDstIPv6a;
-		offset_b = OffsetDstIPv6b;
+		offset_a = offsets[2];
+		offset_b = offsets[3];
 	}
 
 	i = 0;
@@ -1638,6 +1992,10 @@ int i;
 		if ( q ) 
 			*q = '\0';
 		l = strtol(r, NULL, 16);
+		if ( (i == 0 && errno == EINVAL) ) {
+			free(p);
+			return 0;
+		}
 		if ( l > 255 ) {
 			free(p);
 			return 0;
@@ -1659,14 +2017,3 @@ int i;
 	return mac;
 
 } // End of VerifyMac
-
-/*
-
-mpls 1 == 3
-mpls label1  == 3
-mpls any == 4
-
-
-
-
- */

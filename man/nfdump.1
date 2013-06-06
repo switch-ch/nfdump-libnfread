@@ -299,6 +299,51 @@ mpls9     Statistic about MPLS label 9
 mpls10    Statistic about MPLS label 10
 .br
 sysid     Internal SysID of exporter
+.br
+
+.br
+NSEL/ASA stats
+.br
+event     NSEL/ASA event
+.br
+xevent    NSEL/ASA extended event
+.br
+xsrcip    NSEL/ASA translated src IP address
+.br
+xsrcport  NSEL/ASA translated src port
+.br
+xdstip    NSEL/ASA translated dst IP address
+.br
+xdstport  NSEL/ASA translated dst port
+.br
+iacl      NSEL/ASA ingress ACL
+.br
+iace      NSEL/ASA ingress ACE
+.br
+ixace     NSEL/ASA ingress xACE
+.br
+eacl      NSEL/ASA egress ACL
+.br
+eace      NSEL/ASA egress ACE
+.br
+exace     NSEL/ASA egress xACE
+.br
+
+.br
+NEL stats
+.br
+nevent    NAT event
+.br
+vrf       NAT vrf
+.br
+nsrcip    NAT src IP address
+.br
+nsrcport  NAT src port
+.br
+ndstip    NAT dst IP address
+.br
+ndstport  NAT dst port
+.br
 .RE
 .RS 3
 .P
@@ -357,6 +402,10 @@ biline   Same as line, but for bidir flows
 bilong   Same as long, but for bidir flows
 .br
 extended Print each flow on one line with even more details.
+.br
+nsel     Print each NSEL event on one line. Default if NSEL/ASA enabled.
+.br
+nel      Print each NAT event on one line. Default if NEL enabled.
 .br
 csv      Comma separated output for machine readable processing.
 .br
@@ -511,6 +560,10 @@ and format specifier as described below
 .br
 \fB%pr\fR       Protocol
 .br
+\fB%epx\fR      Exporter ID
+.br
+\fB%eng\fR      Engine Type/ID
+.br
 \fB%sa\fR       Source Address
 .br
 \fB%da\fR       Destination Address
@@ -616,6 +669,64 @@ and format specifier as described below
 \fB%pps\fR      pps \- packets per second
 .br
 \fB%bpp\fR      bps \- Bytes per package
+.br
+
+.br
+NSEL specific formats
+.br
+\fB%nfc\fR      NSEL connection ID
+.br
+\fB%evt\fR      NSEL event
+.br
+\fB%xevt\fR     NSEL extended event
+.br
+\fB%msec\fR     NSEL event time in msec
+.br
+\fB%iacl\fR     NSEL ingress ACL
+.br
+\fB%eacl\fR     NSEL egress ACL
+.br
+\fB%xsa\fR      NSEL XLATE src IP address
+.br
+\fB%xda\fR      NSEL XLATE dst IP address
+.br
+\fB%xsp\fR      NSEL XLATE src port
+.br
+\fB%xdp\fR      NSEL SLATE dst port
+.br
+\fB%xsap\fR     Xlate Source Address:Port
+.br
+\fB%xdap\fR     Xlate Destination Address:Port
+.br
+\fB%uname\fR    NSEL user name
+.br
+
+.br
+NEL specific formats
+.br
+\fB%nevt\fR     NAT event
+.br
+\fB%vrf\fR      VRF ID
+.br
+\fB%nsa\fR      NAT src IP address
+.br
+\fB%nda\fR      NAT dst IP address
+.br
+\fB%nsp\fR      NAT src port
+.br
+\fB%ndp\fR      NAT dst port
+.br
+
+.br
+Nprobe formats
+.br
+\fB%cl\fR       Client latency
+.br
+\fB%sl\fR       Server latency
+.br
+\fB%al\fR       Application latency
+.br
+
 .RE
 .PD
 .P
@@ -736,7 +847,7 @@ expr \fBand\fR expr, expr \fBor\fR expr, \fBnot\fR expr and \fB(\fR expr \fB)\fR
 .br
 include the content of \fI<file>\fR into filter.
 .TP 4
-.I protocol version
+.I ip version
 \fBinet\fR  or \fBipv4\fR for IPv4
 .br
 \fBinet6\fR or \fBipv6\fR for IPv6
@@ -744,56 +855,50 @@ include the content of \fI<file>\fR into filter.
 .I protocol
 \fBproto <protocol>\fR 
 .br 
-where \fB<protocol>\fR can be any known protocol such as 
+\fBproto <number>\fR 
+.br
+where \fB<protocol>\fR is known protocol such as 
 \fBtcp\fR, \fBudp\fR, \fBicmp\fR, \fBicmp6\fR, \fBgre\fR, 
 \fBesp\fR, \fBah\fR, etc. or a valid protocol number: 
 \fB6\fR, \fB17\fR etc.
 .TP 4
 .I IP address
 .RS 4
-\fI[SourceDestination]\fR \fBip <ipaddr>\fR
+\fB[src|dst] ip <ipaddr>\fR
 .br
-\fI[SourceDestination]\fR \fBhost <ipaddr>\fR 
+\fB[src|dst] host <ipaddr>\fR 
 .br
 with \fI<ipaddr>\fR as any valid IPv4, IPv6 address, or a full qualified
 hostname.  In case of a hostname, the IP address is looked up in DNS. 
 If more than a single IP address is found, all IP addresses are chained 
 together. \fB(ip1 or ip2 or ip3 ... )\fR
-The direction qualifier \fISourceDestination\fR may be omitted.
 .P
-To check an IP address against a known IP list
+To check if an IP address is in a known IP list, use
 .br
-\fI[SourceDestination]\fR \fBip in [ <iplist> ] \fR
+\fB[src|dst] ip in [ <iplist> ] \fR
 .br
-\fI[SourceDestination]\fR \fBhost in [ <iplist> ]  \fR
+\fB[src|dst] host in [ <iplist> ]  \fR
 .br
-\fB<iplist>\fR is a space separated list of individual \fB<ipaddr>\fR or 
+\fI<iplist>\fR is a space or comma separated list of individual \fB<ipaddr>\fR or 
 full qualified hostnames, which are looked up in DNS. If more than a 
 single IP address is found, all IP addresses are put into the list.
 .RE
 .PD
 .TP 4
-.I SourceDestination
+.I [src|dst]
 IP addresses, networks, ports, AS number etc. can be specifically selected
 by using a direction qualifier, such as \fbsrc\fR or \fBdst\fR.
 They can also be used in combination with \fBand\fR and \fBor\fR.
-such as \fBsrc and dst ip ..\fR. Ommiting the \fISourceDestination\fR
-qualifier is equivalent to \fBsrc or dst\fR.
-.TP 4
-.I ASSourceDestination
-Like \fISourceDestination\fR, also includes \fBnext\fR and \fBprev\fR
-for previous and next AS numbers
-.br
-Example: \fBprev as 65301 or next as 65302\fR
+such as \fBsrc and dst ip ..\fR. 
 .TP 4
 .I network
-\fI[SourceDestination]\fR \fBnet a.b.c.d m.n.r.s\fR
+\fB[src|dst] net a.b.c.d m.n.r.s\fR
 .br
 Select the IPv4 network \fIa.b.c.d\fR with netmask \fIm.n.r.s\fR.
 .br
 
 .br
-\fI[SourceDestination]\fR \fBnet <net>/<num>\fR
+\fB[src|dst] net <net>/<num>\fR
 .br
 with \fI<net>\fR as a valid IPv4 or IPv6 network and \fI<num>\fR as maskbits. 
 The number of mask bits must match the appropriate address familiy in IPv4 or 
@@ -802,12 +907,12 @@ IPv6. Networks may be abreviated such as 172.16/16 if they are unambiguous.
 .TP 4 
 .I Port
 .RS 4
-\fI[SourceDestination]\fR  \fBport [comp] <num>\fR
+\fB[src|dst] port [comp] <num>\fR
 .br
 with \fI<num>\fR as any valid port number.  If \fIcomp\fR is omitted, 
  '=' is assumed. \fIcomp\fR is explained more detailed below.
 .br
-\fI[SourceDestination]\fR \fBport in [ <portlist> ] \fR
+\fB[src|dst] port in [ <portlist> ] \fR
 .br
 A port can be compared against a know list, where \fB<portlist>\fR is a 
 space separated list of individual port numbers.
@@ -835,34 +940,34 @@ with \fI<num>\fR as a valid router engine type/id or exporter ID(0..255).
 .RE
 .TP 4 
 .I Interface
-\fI[inout]\fR \fBif <num>\fR
+\fB[in|out] if <num>\fR
 .br
-with \fInum\fR as the SNMP interface number. \fIinout\fR may be an 
-optional selection of \fBin\fR or \fBout\fR. If ommited \fBin or out\fR applies.
+Select input or output or either interface ID, with \fInum\fR as the SNMP interface number. 
 .br
 Example: \fBin if 3\fR
 .TP 4
 .I AS numbers
-\fI[ASSourceDestination]\fR  \fBas [comp] <num>\fR
+\fB[src|dst|prev|next] as [comp] <num>\fR
 .br
+Selects source, dstination, previous, next or any AS number
 with \fI<num>\fR as any valid as number. 32bit AS numbers are suported. If 
 \fIcomp\fR is omitted, '=' is assumed. \fIcomp\fR is explained more detailed below.
 .br
 
 .br
-\fI[ASSourceDestination]\fR \fBas in [ <ASlist> ] \fR
+\fB[src|dst|prev|next] as in [ <ASlist> ] \fR
 .br
 An AS number can be compared against a know list, where \fB<ASlist>\fR is a 
-space separated list of individual AS numbers.
+space or comma separated list of individual AS numbers.
 .RE
 .TP 4
 .I Prefix mask bits 
-\fI[SourceDestination]\fR \fBmask <bits>\fR
+\fB[src|dst] mask <bits>\fR
 .br
 with \fI<bits>\fR as any valid prefix mask bit value.
 .TP 4
 .I Vlan labels
-\fI[SourceDestination]\fR \fBvlan <num>\fR
+\fB[src|dst] vlan <num>\fR
 .br
 with \fI<num>\fR as any valid vlan label.
 .TP 4
@@ -907,7 +1012,7 @@ Filter the flows according the IP address of the exporting router.
 .TP 4
 .I
 MAC addresses
-\fI[InOutSrcDst]\fR \fBmac <addr>\fR
+\fB[InOutSrcDst] mac <addr>\fR
 .br
 With \fI<addr>\fR any valid MAC address. \fBmac\fR can be more specific 
 specified by using any combination of a direction specifier as defined by CISCO v9.
@@ -977,6 +1082,96 @@ To filter for flows with specific bytes per packet.
 \fIcomp\fR The following comparators are supported:
 .B =, ==, >, <,  EQ, LT, GT .
 If \fIcomp\fR is omitted, '=' is assumed.
+.P
+
+.TP 4
+\fBNSEL/ASA specific filters:\fR
+.P
+.I NSEL/ASA Event
+.RS 4
+\fBasa event <ignore|create|term|delete|deny>\fR
+.br
+\fBasa event [comp] <number>\fR
+.br
+select NSEL/ASA event by name or number. If given as number it can be compared with a number
+.br
+.RE
+.PD
+.TP 4
+.I NSEL/ASA denied reason
+.RS 4
+\fBasa event denied <ingress|egress|interface|nosyn>\fR
+.br
+Select a NSEL/ASA denied event by type
+.RE
+.PD
+.TP 4
+.I NSEL/ASA extended events
+.RS 4
+\fBasa xevent [comp] <num>\fR
+.br
+Select an extended NSELL ASA event by number, or optionally compared by a number.
+.RE
+.PD
+.TP 4
+.I X-late IP addresses and ports
+.RS 4
+\fB[src|dst] xip <ip>\fr
+.br
+Select the translated IP address
+.P
+\fB[src|dst] xport <port>\fR
+.br
+Select the translated port
+.RE
+.PD
+.TP 4
+.I NSEL/ASA ingress/egress
+.RS 4
+\fBingress <ACL|ACE|XACE> [comp] number
+.br
+Select/compare an ingress ACL
+.P
+\fBegress ACL [comp] <number>\fR
+.br
+Select/compare an egress ACL
+.P
+
+.RE
+.PD
+.TP 4
+\fBNEL specific NAT filters:\fR
+.P
+.I NAT Event
+.RS 4
+\fBnat event <add|delete>\fR
+.br
+\fBnat event [comp] <number>\fR
+.br
+select NEL NAT event by name or number. If given as number it can be compared with a number
+.br
+.RE
+.PD
+.TP 4
+.I NEL NAT ip addresses and ports
+.RS 4
+\fB[src|dst] nip <ip>
+.br
+Select the NAT IP address
+.P
+\fB[src|dst] nport <port>
+.br
+Select the NAT port
+.RE
+.PD
+.TP 4
+.I NEL NAT vrf
+\fBingress vrf <num>\fR
+.b
+Select the vrf
+.RE
+.PD
+
 .SH "EXAMPLES"
 .B nfdump \-r /and/dir/nfcapd.201107110845 \-c 100 'proto tcp and ( src ip 172.16.17.18 or dst ip 172.16.17.19 )'
 Dumps the first 100 netflow records which match the given filter:

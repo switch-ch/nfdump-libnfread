@@ -51,6 +51,8 @@ typedef struct FilterParam {
 	uint16_t	comp;
 	uint16_t	direction;
 	uint32_t	data;
+	uint32_t	inout;
+	uint32_t	acl;
 	uint32_t	self;
 } FilterParam_t;
 

@@ -100,9 +100,9 @@ extension_descriptor_t extension_descriptor[] = {
 	{ EX_ROUTER_ID,			4,	14, 0,   "router ID"},
 
 	{ EX_BGPADJ,			8,	15, 0,   "BGP adjacent prev/next AS"},
+	{ EX_RECEIVED,			8,	16, 0,   "time packet received"},
 
 	// reserved for more v9/IPFIX
-	{ EX_RECEIVED,			8,	16, 0,   "time packet received"},
 	{ EX_RESERVED_1,		0,	0, 0,    NULL},
 	{ EX_RESERVED_2,		0,	0, 0,    NULL},
 	{ EX_RESERVED_3,		0,	0, 0,    NULL},
@@ -112,21 +112,26 @@ extension_descriptor_t extension_descriptor[] = {
 	{ EX_RESERVED_7,		0,	0, 0,    NULL},
 	{ EX_RESERVED_8,		0,	0, 0,    NULL},
 	{ EX_RESERVED_9,		0,	0, 0,    NULL},
-	
-	// ASA - Network Security Event Logging
-	{ EX_NSEL_0,		0,	0, 0,    NULL},
-	{ EX_NSEL_1,		0,	0, 0,    NULL},
-	{ EX_NSEL_2,		0,	0, 0,    NULL},
-	{ EX_NSEL_3,		0,	0, 0,    NULL},
-	{ EX_NSEL_4,		0,	0, 0,    NULL},
 
-	// NAT - Network Event Logging
-	{ EX_NSEL_0,		0,	0, 0,    NULL},
-	{ EX_NSEL_1,		0,	0, 0,    NULL},
-	{ EX_NSEL_2,		0,	0, 0,    NULL},
+	// ASA - Network Security Event Logging NSEL extensions
+	{ EX_NSEL_COMMON,	   20,	26, 0,		"NSEL Common block"},
+	{ EX_NSEL_XLATE_PORTS,  4,	27, 0,		"NSEL xlate ports"},
+	{ EX_NSEL_XLATE_IP_v4,  8,	28, 0,		"NSEL xlate IPv4 addr"},
+	{ EX_NSEL_XLATE_IP_v6, 32,	28, 0,		"NSEL xlate IPv6 addr"},
+	{ EX_NSEL_ACL,		   24,	29, 0,		"NSEL ACL ingress/egress acl ID"},
+	{ EX_NSEL_USER,		   24,	30, 0,		"NSEL username"},
+	{ EX_NSEL_USER_MAX,	   72,	30, 0,		"NSEL max username"},
+
+	{ EX_NSEL_RESERVED,		0,	0, 0,		NULL},
 
 	// nprobe extensions
-	{ EX_LATENCY,			24,	64, 0,   "nprobe latency"},
+	{ EX_LATENCY,			24,	64, 0,		"nprobe latency"},
+
+	// NAT - Network Event Logging
+	{ EX_NEL_COMMON,		12,	31, 0,		"NEL Common block"},
+	{ EX_NEL_GLOBAL_IP_v4,  8,	32, 0,    	"NEL xlate IPv4 addr"},
+	{ EX_NEL_GLOBAL_IP_v6, 32,	32, 0,    	"NEL xlate IPv6 addr"},
+	{ EX_NEL_RESERVED,		0,	0, 0,		NULL},
 
 	// last entry
 	{ 0,	0,	0, 0,	NULL }
@@ -149,9 +154,19 @@ int i;
 
 	Max_num_extensions = 0;
 	i = 1;
-	while ( extension_descriptor[i++].id ) 
+	while ( extension_descriptor[i++].id ) {
 		Max_num_extensions++;
-
+	}
+#ifdef DEVEL
+	i = 1;
+	while ( extension_descriptor[i].id ) {
+		if ( extension_descriptor[i].id != i ) {
+			printf("*** ERROR *** Init extension_descriptors at index %i: ID: %i, %s\n", 
+				i, extension_descriptor[i].id, extension_descriptor[i].description);
+		}
+		i++;
+	}
+#endif
 } // End of InitExtensionMaps
 
 void FreeExtensionMaps(extension_map_list_t *extension_map_list) {
@@ -442,6 +457,22 @@ char *p, *q, *s;
 			for (i=4; extension_descriptor[i].id; i++ ) 
 				if ( extension_descriptor[i].description ) 
 					extension_descriptor[i].enabled = sign == 1 ? : 0;
+		} else if ( strcmp(p, "nsel") == 0 ) {
+			extension_descriptor[EX_IO_SNMP_2].enabled		  = 0;
+			extension_descriptor[EX_IO_SNMP_4].enabled		  = 0;
+			extension_descriptor[EX_OUT_BYTES_4].enabled	  = 1;
+			extension_descriptor[EX_OUT_BYTES_8].enabled	  = 1;
+			extension_descriptor[EX_NSEL_COMMON].enabled	  = 1;
+			extension_descriptor[EX_NSEL_XLATE_PORTS].enabled = 1;
+			extension_descriptor[EX_NSEL_XLATE_IP_v4].enabled = 1;
+			extension_descriptor[EX_NSEL_XLATE_IP_v6].enabled = 1;
+			extension_descriptor[EX_NSEL_ACL].enabled		  = 1;
+			extension_descriptor[EX_NSEL_USER].enabled		  = 1;
+			extension_descriptor[EX_NSEL_USER_MAX].enabled	  = 1;
+		} else if ( strcmp(p, "nel") == 0 ) {
+			extension_descriptor[EX_NEL_COMMON].enabled		  = 1;
+			extension_descriptor[EX_NEL_GLOBAL_IP_v4].enabled = 1;
+			extension_descriptor[EX_NEL_GLOBAL_IP_v6].enabled = 1;
 		} else {
 			switch ( *p ) {
 				case '\0':
@@ -504,7 +535,7 @@ int i;
 	i=0;
 	while (map->ex_id[i]) {
 		int id = map->ex_id[i++];
-		printf("  Index %3i, ext %3u = %s\n", extension_descriptor[id].user_index, id, extension_descriptor[id].description );
+		printf("  ID %3i, ext %3u = %s\n", extension_descriptor[id].user_index, id, extension_descriptor[id].description );
 	}
 	printf("\n");
 

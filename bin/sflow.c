@@ -2465,6 +2465,9 @@ char buf[51];
 
 	/* now iterate and pull out the flows and counters samples */
 	for(; samp < samplesInPacket; samp++) {
+		memset(&sample->packet_data_tag, 0,
+			sizeof(*sample) - ((void *)&sample->packet_data_tag - (void *)sample));
+
 		// just read the tag, then call the approriate decode fn
 		sample->sampleType = getData32(sample);
 		dbg_printf("startSample ----------------------\n");

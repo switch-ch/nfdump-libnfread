@@ -132,6 +132,10 @@ static void String_SrcPort(master_record_t *r, char *string);
 
 static void String_DstPort(master_record_t *r, char *string);
 
+static void String_ICMP_code(master_record_t *r, char *string);
+
+static void String_ICMP_type(master_record_t *r, char *string);
+ 
 static void String_SrcAS(master_record_t *r, char *string);
 
 static void String_DstAS(master_record_t *r, char *string);
@@ -220,14 +224,64 @@ static void String_bpp(master_record_t *r, char *string);
 
 static void String_ExpSysID(master_record_t *r, char *string);
 
+#ifdef NSEL
+static void String_FlowStart(master_record_t *r, char *string);
+
+static void String_nfc(master_record_t *r, char *string);
+
+static void String_evt(master_record_t *r, char *string);
+
+static void String_xevt(master_record_t *r, char *string);
+
+static void String_msec(master_record_t *r, char *string);
+
+static void String_iacl(master_record_t *r, char *string);
+
+static void String_eacl(master_record_t *r, char *string);
+
+static void String_xlateSrcAddr(master_record_t *r, char *string);
+
+static void String_xlateDstAddr(master_record_t *r, char *string);
+
+static void String_xlateSrcPort(master_record_t *r, char *string);
+
+static void String_xlateDstPort(master_record_t *r, char *string);
+
+static void String_xlateSrcAddrPort(master_record_t *r, char *string);
+
+static void String_xlateDstAddrPort(master_record_t *r, char *string);
+
+static void String_userName(master_record_t *r, char *string);
+
+#endif
+
+#ifdef NEL
+static void String_nevt(master_record_t *r, char *string);
+
+static void String_vrf(master_record_t *r, char *string);
+
+static void String_natSrcAddr(master_record_t *r, char *string);
+
+static void String_natDstAddr(master_record_t *r, char *string);
+
+static void String_natSrcPort(master_record_t *r, char *string);
+
+static void String_natDstPort(master_record_t *r, char *string);
+
+static void String_natSrcAddrPort(master_record_t *r, char *string);
+
+static void String_natDstAddrPort(master_record_t *r, char *string);
+
+#endif
+
 static struct format_token_list_s {
 	char				*token;				// token
 	int					is_address;			// is an IP address
 	char				*header;			// header line description
 	string_function_t	string_function;	// function generation output string
 } format_token_list[] = {
-	{ "%ts",  0, "Date flow start        ", String_FirstSeen },		// Start Time - first seen
-	{ "%te",  0, "Date flow end          ", String_LastSeen },		// End Time	- last seen
+	{ "%ts",  0, "Date first seen        ", String_FirstSeen },		// Start Time - first seen
+	{ "%te",  0, "Date last seen         ", String_LastSeen },		// End Time	- last seen
 	{ "%tr",  0, "Date flow received     ", String_Received },		// Received Time
 	{ "%td",  0, " Duration", 				String_Duration },		// Duration
 	{ "%exp", 0, "Exp ID", 				 	String_ExpSysID },		// Exporter SysID
@@ -243,6 +297,8 @@ static struct format_token_list_s {
 	{ "%dap", 1, "     Dst IP Addr:Port ",  String_DstAddrPort },	// Destination Address:Port
 	{ "%sp",  0, "Src Pt", 				 	String_SrcPort },		// Source Port
 	{ "%dp",  0, "Dst Pt", 				 	String_DstPort },		// Destination Port
+	{ "%it",  0, "ICMP-T", 					String_ICMP_type },		// ICMP type
+	{ "%ic",  0, "ICMP-C", 					String_ICMP_code },		// ICMP code
 	{ "%sas", 0, "Src AS",				 	String_SrcAS },			// Source AS
 	{ "%das", 0, "Dst AS",				 	String_DstAS },			// Destination AS
 	{ "%nas", 0, "Next AS",				 	String_NextAS },		// Next AS
@@ -286,6 +342,36 @@ static struct format_token_list_s {
 	{ "%pps", 0, "     pps", 			 	String_pps },			// pps - packets per second
 	{ "%bpp", 0, "   Bpp", 				 	String_bpp },			// bpp - Bytes per package
 	{ "%eng", 0, " engine", 			 	String_Engine },		// Engine Type/ID
+
+#ifdef NSEL
+// NSEL specifics
+	{ "%nfc",   0, "   Conn-ID", 			String_nfc },				// NSEL connection ID
+	{ "%tfs", 	0, "Date flow start        ",String_FlowStart },		// NSEL Flow start time
+	{ "%evt",   0, " Event", 				String_evt },				// NSEL event
+	{ "%xevt",  0, " XEvent", 				String_xevt },				// NSEL xevent
+	{ "%msec",  0, "   Event Time", 		String_msec},				// NSEL event time in msec
+	{ "%iacl",  0, "Ingress ACL                     ", String_iacl}, 	// NSEL ingress ACL
+	{ "%eacl",  0, "Egress ACL                      ", String_eacl}, 	// NSEL egress ACL
+	{ "%xsa",   0, "   X-late Src IP", 		String_xlateSrcAddr},		// NSEL XLATE src IP
+	{ "%xda",   0, "  X-late Dest IP", 		String_xlateDstAddr},		// NSEL XLATE dst IP
+	{ "%xsp",   0, "XsPort", 				String_xlateSrcPort},		// NSEL XLATE src port
+	{ "%xdp",   0, "XdPort", 				String_xlateDstPort},		// NSEL SLATE dst port
+	{ "%xsap", 1, "   X-Src IP Addr:Port ",	String_xlateSrcAddrPort },	// Xlate Source Address:Port
+	{ "%xdap", 1, "   X-Dst IP Addr:Port ", String_xlateDstAddrPort },	// Xlate Destination Address:Port
+	{ "%uname", 0, "UserName", 				String_userName},			// NSEL user name
+
+#endif
+
+#ifdef NEL
+	{ "%nevt",   0, " Event", 				  String_nevt },			// NEL event
+	{ "%vrf",    0, "    VRF-ID", 			  String_vrf },				// NEL vrf ID
+	{ "%nsa",    0, "      Src NAT IP", 	  String_natSrcAddr},		// NSEL XLATE src IP
+	{ "%nda",    0, "      Dst NAT IP", 	  String_natDstAddr},		// NSEL XLATE dst IP
+	{ "%nsp",    0, "NsPort", 				  String_natSrcPort},		// NSEL XLATE src port
+	{ "%ndp",    0, "NdPort", 				  String_natDstPort},		// NSEL SLATE dst port
+	{ "%nsap",   1, " Src NAT IP Addr:Port ", String_natSrcAddrPort },	// Xlate Source Address:Port
+	{ "%ndap",   1, " Dst NAT IP Addr:Port ", String_natDstAddrPort },	// Xlate Destination Address:Port
+#endif
 
 	// nprobe latency
 	{ "%cl", 0, "C Latency", 	 		 	String_ClientLatency },	// client latency
@@ -471,6 +557,14 @@ static struct fwd_status_def_s {
 	{ 0,	NULL}		// Last entry
 };
 
+char *NSEL_event_string[6] = {
+	"IGNORE", "CREATE", "DELETE", "DENIED", "ALERT", "UPDATE"
+};
+
+char *NEL_event_string[3] = {
+	"INVALID", "ADD", "DELETE"
+};
+
 static char **fwd_status = NULL;
 
 #include "applybits_inline.c"
@@ -583,7 +677,7 @@ extension_map_t	*extension_map = r->map_ref;
 
 	as[0] = 0;
 	ds[0] = 0;
-	if ( (r->flags & FLAG_IPV6_ADDR ) != 0 ) { // IPv6
+	if ( TestFlag(r->flags,FLAG_IPV6_ADDR ) != 0 ) { // IPv6
 		uint64_t snet[2];
 		uint64_t dnet[2];
 
@@ -670,7 +764,7 @@ extension_map_t	*extension_map = r->map_ref;
 	slen = STRINGSIZE;
 	snprintf(_s, slen-1, "\n"
 "Flow Record: \n"
-"  Flags        =              0x%.2x %s\n"
+"  Flags        =              0x%.2x %s, %s\n"
 "  export sysid =             %5u\n"
 "  size         =             %5u\n"
 "  first        =        %10u [%s]\n"
@@ -680,7 +774,8 @@ extension_map_t	*extension_map = r->map_ref;
 "  src addr     =  %16s\n"
 "  dst addr     =  %16s\n"
 , 
-		r->flags, TestFlag(r->flags, FLAG_SAMPLED) ? "Sampled" : "Unsampled", r->exporter_sysid, r->size, r->first, 
+		r->flags, TestFlag(r->flags, FLAG_EVENT) ? "EVENT" : "FLOW", 
+		TestFlag(r->flags, FLAG_SAMPLED) ? "Sampled" : "Unsampled", r->exporter_sysid, r->size, r->first, 
 		datestr1, r->last, datestr2, r->msec_first, r->msec_last, 
 		as, ds );
 
@@ -689,11 +784,9 @@ extension_map_t	*extension_map = r->map_ref;
 	slen = STRINGSIZE - _slen;
 
 	if ( r->prot == IPPROTO_ICMP || r->prot == IPPROTO_ICMPV6 ) { // ICMP
-		uint16_t type = r->dstport >> 8;
-		uint16_t code = r->dstport & 0xFF;
 		snprintf(_s, slen-1,
-"  ICMP         =              %2u.%-2u\n",
-		type, code);
+"  ICMP         =              %2u.%-2u type.code\n",
+		r->icmp_type, r->icmp_code);
 	} else {
 		snprintf(_s, slen-1,
 "  src port     =             %5u\n"
@@ -930,6 +1023,23 @@ extension_map_t	*extension_map = r->map_ref;
 				slen = STRINGSIZE - _slen;
 	
 			break;
+			case EX_ROUTER_IP_v6:
+				as[0] = 0;
+				r->ip_router.v6[0] = htonll(r->ip_router.v6[0]);
+				r->ip_router.v6[1] = htonll(r->ip_router.v6[1]);
+				inet_ntop(AF_INET6, &r->ip_router.v6, as, sizeof(as));
+				if ( ! long_v6 ) {
+					condense_v6(as);
+				}
+				as[IP_STRING_LEN-1] = 0;
+
+				snprintf(_s, slen-1,
+"  ip router    =  %16s\n"
+, as);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+			break;
 			case EX_LATENCY: {
 				double f1, f2, f3;
 				f1 = (double)r->client_nw_delay_usec / 1000.0;
@@ -947,24 +1057,6 @@ extension_map_t	*extension_map = r->map_ref;
 				slen = STRINGSIZE - _slen;
 
 			} break;
-			case EX_ROUTER_IP_v6:
-				as[0] = 0;
-				r->ip_router.v6[0] = htonll(r->ip_router.v6[0]);
-				r->ip_router.v6[1] = htonll(r->ip_router.v6[1]);
-				inet_ntop(AF_INET6, &r->ip_router.v6, as, sizeof(as));
-				if ( ! long_v6 ) {
-					condense_v6(as);
-					condense_v6(ds);
-				}
-				as[IP_STRING_LEN-1] = 0;
-
-				snprintf(_s, slen-1,
-"  ip router    =  %16s\n"
-, as);
-				_slen = strlen(data_string);
-				_s = data_string + _slen;
-				slen = STRINGSIZE - _slen;
-			break;
 			case EX_ROUTER_ID:
 				snprintf(_s, slen-1,
 "  engine type  =             %5u\n"
@@ -986,7 +1078,158 @@ extension_map_t	*extension_map = r->map_ref;
 				_s = data_string + _slen;
 				slen = STRINGSIZE - _slen;
 				break;
+#ifdef NSEL
+			case EX_NSEL_COMMON: {
+				char *event = "UNKNOWN";
+				if ( r->fw_event <= 5 ) {
+					event = NSEL_event_string[r->fw_event];
+				} 
+				when = r->flow_start / 1000LL;
+				ts = localtime(&when);
+				strftime(datestr3, 63, "%Y-%m-%d %H:%M:%S", ts);
+				snprintf(_s, slen-1,
+"  connect ID   =        %10u\n"
+"  fw event     =             %5u: %s\n"
+"  fw ext event =             %5u\n"
+"  flow start   =     %13llu [%s.%03llu]\n"
+, r->conn_id, r->fw_event, event, r->fw_xevent
+, (long long unsigned)r->flow_start, datestr3, (long long unsigned)(r->flow_start % 1000L));
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				} break;
+			case EX_NSEL_XLATE_PORTS: {
+				snprintf(_s, slen-1,
+"  src asa port =             %5u\n"
+"  dst asa port =             %5u\n"
+, r->xlate_src_port, r->xlate_dst_port );
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
 
+				} break;
+			case EX_NSEL_XLATE_IP_v4:
+				as[0] = 0;
+				ds[0] = 0;
+				r->xlate_src_ip.v4 = htonl(r->xlate_src_ip.v4);
+				r->xlate_dst_ip.v4 = htonl(r->xlate_dst_ip.v4);
+				inet_ntop(AF_INET, &r->xlate_src_ip.v4, as, sizeof(as));
+				inet_ntop(AF_INET, &r->xlate_dst_ip.v4, ds, sizeof(ds));
+				as[IP_STRING_LEN-1] = 0;
+				ds[IP_STRING_LEN-1] = 0;
+
+				snprintf(_s, slen-1,
+"  src asa ip   =  %16s\n"
+"  dst asa ip   =  %16s\n"
+, as, ds);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+			break;
+			case EX_NSEL_XLATE_IP_v6:
+				as[0] = 0;
+				ds[0] = 0;
+				r->xlate_src_ip.v6[0] = htonll(r->xlate_src_ip.v6[0]);
+				r->xlate_src_ip.v6[1] = htonll(r->xlate_src_ip.v6[1]);
+				r->xlate_dst_ip.v6[0] = htonll(r->xlate_dst_ip.v6[0]);
+				r->xlate_dst_ip.v6[1] = htonll(r->xlate_dst_ip.v6[1]);
+				inet_ntop(AF_INET6, &r->xlate_src_ip.v6, as, sizeof(as));
+				inet_ntop(AF_INET6, &r->xlate_dst_ip.v6, ds, sizeof(ds));
+				if ( ! long_v6 ) {
+					condense_v6(as);
+					condense_v6(ds);
+				}
+				as[IP_STRING_LEN-1] = 0;
+				ds[IP_STRING_LEN-1] = 0;
+
+				snprintf(_s, slen-1,
+"  src asa ip   =  %16s\n"
+"  dst asa ip   =  %16s\n"
+, as, ds);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+			break;
+			case EX_NSEL_ACL:
+				snprintf(_s, slen-1,
+"  Ingress ACL  =       0x%x/0x%x/0x%x\n"
+"  Egress ACL   =       0x%x/0x%x/0x%x\n"
+, r->ingress_acl_id[0], r->ingress_acl_id[1], r->ingress_acl_id[2], 
+  r->egress_acl_id[0], r->egress_acl_id[1], r->egress_acl_id[2]);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				break;
+			case EX_NSEL_USER:
+			case EX_NSEL_USER_MAX:
+				snprintf(_s, slen-1,
+"  User name    = %s\n"
+, r->username[0] ? r->username : "          <empty>");
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				break;
+#endif
+#ifdef NEL
+			case EX_NEL_COMMON: {
+				char *event = "UNKNOWN";
+				if ( r->nat_event <= 2 ) {
+					event = NEL_event_string[r->nat_event];
+				}
+				snprintf(_s, slen-1,
+"  nat event    =             %5u: %s\n"
+"  src nat port =             %5u\n"
+"  dst nat port =             %5u\n"
+"  ingress VRF  =        %10u\n"
+, r->nat_event, event, r->post_src_port, r->post_dst_port, r->ingress_vrfid);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				} break;
+			case EX_NEL_GLOBAL_IP_v4:
+				as[0] = 0;
+				ds[0] = 0;
+				r->nat_inside.v4 = htonl(r->nat_inside.v4);
+				r->nat_outside.v4 = htonl(r->nat_outside.v4);
+				inet_ntop(AF_INET, &r->nat_inside.v4, as, sizeof(as));
+				inet_ntop(AF_INET, &r->nat_outside.v4, ds, sizeof(ds));
+				as[IP_STRING_LEN-1] = 0;
+				ds[IP_STRING_LEN-1] = 0;
+
+				snprintf(_s, slen-1,
+"  src nat ip   =  %16s\n"
+"  dst nat ip   =  %16s\n"
+, as, ds);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+			break;
+			case EX_NEL_GLOBAL_IP_v6:
+				as[0] = 0;
+				ds[0] = 0;
+				r->nat_inside.v6[0] = htonll(r->nat_inside.v6[0]);
+				r->nat_inside.v6[1] = htonll(r->nat_inside.v6[1]);
+				r->nat_outside.v6[0] = htonll(r->nat_outside.v6[0]);
+				r->nat_outside.v6[1] = htonll(r->nat_outside.v6[1]);
+				inet_ntop(AF_INET6, &r->nat_inside.v6, as, sizeof(as));
+				inet_ntop(AF_INET6, &r->nat_outside.v6, ds, sizeof(ds));
+				if ( ! long_v6 ) {
+					condense_v6(as);
+					condense_v6(ds);
+				}
+				as[IP_STRING_LEN-1] = 0;
+				ds[IP_STRING_LEN-1] = 0;
+
+				snprintf(_s, slen-1,
+"  src nat ip   =  %16s\n"
+"  dst nat ip =  %16s\n"
+, as, ds);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+			break;
+
+#endif
 			default:
 				snprintf(_s, slen-1, "Type %u not implemented\n", id);
 
@@ -1036,7 +1279,7 @@ master_record_t *r = (master_record_t *)record;
 
 void flow_record_to_csv(void *record, char ** s, int tag) {
 char 		*_s, as[IP_STRING_LEN], ds[IP_STRING_LEN]; 
-char		proto_str[MAX_PROTO_STR], datestr1[64], datestr2[64], flags_str[16];
+char		proto_str[MAX_PROTO_STR], datestr1[64], datestr2[64], datestr3[64], flags_str[16];
 char		s_snet[IP_STRING_LEN], s_dnet[IP_STRING_LEN];
 ssize_t		slen, _slen;
 time_t		when;
@@ -1343,6 +1586,16 @@ master_record_t *r = (master_record_t *)record;
 		_s = data_string + _slen;
 		slen = STRINGSIZE - _slen;
 
+	// Date flow received
+	when = r->received / 1000LL;
+ 	ts = localtime(&when);
+ 	strftime(datestr3, 63, ",%Y-%m-%d %H:%M:%S", ts);
+ 
+ 	snprintf(_s, slen-1, "%s.%03llu", datestr3, r->received % 1000L);
+ 	        _slen = strlen(data_string);
+ 	        _s = data_string + _slen;
+ 	        slen = STRINGSIZE - _slen;
+
 	// snprintf(_s, slen-1, "\n");
 	data_string[STRINGSIZE-1] = 0;
 	*s = data_string;
@@ -1385,7 +1638,7 @@ char *get_record_header(void) {
 
 void set_record_header(void) {
 
-	snprintf(header_string, STRINGSIZE-1, "ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,cl,sl,al,ra,eng,exid");
+	snprintf(header_string, STRINGSIZE-1, "ts,te,td,sa,da,sp,dp,pr,flg,fwd,stos,ipkt,ibyt,opkt,obyt,in,out,sas,das,smk,dmk,dtos,dir,nh,nhb,svln,dvln,ismc,odmc,idmc,osmc,mpls1,mpls2,mpls3,mpls4,mpls5,mpls6,mpls7,mpls8,mpls9,mpls10,cl,sl,al,ra,eng,exid,tr");
 	header_string[STRINGSIZE-1] = '\0';
 
 } // End of format_csv_header
@@ -1616,12 +1869,9 @@ char	*p, *q;
 } // End of condense_v6
 
 static inline void ICMP_Port_decode(master_record_t *r, char *string) {
-uint8_t	type, code;
 
 	if ( r->prot == IPPROTO_ICMP || r->prot == IPPROTO_ICMPV6 ) { // ICMP
-		type = r->dstport >> 8;
-		code = r->dstport & 0xFF;
-		snprintf(string, MAX_STRING_LENGTH-1, "%u.%u",  type, code);
+		snprintf(string, MAX_STRING_LENGTH-1, "%u.%u",  r->icmp_type, r->icmp_code);
 	} else { 	// dst port
 		snprintf(string, MAX_STRING_LENGTH-1, "%u",  r->dstport);
 	}
@@ -1671,6 +1921,22 @@ char 	*s;
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_Received
+
+#ifdef NSEL
+static void String_FlowStart(master_record_t *r, char *string) {
+time_t 	tt;
+struct tm * ts;
+char 	*s;
+
+	tt = r->flow_start / 1000LL;
+	ts = localtime(&tt);
+	strftime(string, MAX_STRING_LENGTH-1, "%Y-%m-%d %H:%M:%S", ts);
+	s = string + strlen(string);
+	snprintf(s, MAX_STRING_LENGTH-strlen(string)-1,".%03llu", r->flow_start % 1000LL);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_FlowStart
+#endif
 
 static void String_Duration(master_record_t *r, char *string) {
 
@@ -1976,6 +2242,24 @@ char tmp[MAX_STRING_LENGTH];
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_DstPort
+
+static void String_ICMP_type(master_record_t *r, char *string) {
+	uint8_t type;
+
+	type =  ( r->prot == IPPROTO_ICMP || r->prot == IPPROTO_ICMPV6 ) ? r->icmp_type : 0;
+	snprintf(string, MAX_STRING_LENGTH-1, "%6u", type);
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_ICMP_type
+
+static void String_ICMP_code(master_record_t *r, char *string) {
+	uint8_t code;
+
+	code =  ( r->prot == IPPROTO_ICMP || r->prot == IPPROTO_ICMPV6 ) ? r->icmp_code : 0;
+	snprintf(string, MAX_STRING_LENGTH-1, "%6u", code);
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_ICMP_code
 
 static void String_SrcAS(master_record_t *r, char *string) {
 
@@ -2376,3 +2660,409 @@ static void String_ExpSysID(master_record_t *r, char *string) {
 
 } // End of String_ExpSysID
 
+#ifdef NSEL
+static void String_nfc(master_record_t *r, char *string) {
+
+ 	snprintf(string, MAX_STRING_LENGTH-1, "%10u", r->conn_id);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_nfc
+
+static void String_evt(master_record_t *r, char *string) {
+
+	switch(r->fw_event) {
+		case 0:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%3s", "IGNORE");
+			break;
+		case 1:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "CREATE");
+			break;
+		case 2:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "DELETE");
+			break;
+		case 3:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "DENIED");
+			break;
+		case 4:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "ALERT");
+			break;
+		case 5:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "UPDATE");
+			break;
+		default:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "UNKNOW");
+	}			
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_evt
+
+
+static void String_xevt(master_record_t *r, char *string) {
+
+	switch( r->fw_xevent) {
+		case 0:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%7s", "Ignore");
+			break;
+		case 1001:
+			snprintf(string,MAX_STRING_LENGTH-1,"%7s","I-ACL");
+			break;
+		case 1002:
+			snprintf(string,MAX_STRING_LENGTH-1,"%7s","E-ACL");
+			break;
+		case 1003:
+			snprintf(string,MAX_STRING_LENGTH-1,"%7s","Adap");
+			break;
+		case 1004:
+			snprintf(string,MAX_STRING_LENGTH-1,"%7s","No Syn");
+			break;
+		default:
+			snprintf(string,MAX_STRING_LENGTH-1,"%7u",r->fw_xevent);
+	}
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_xevt
+
+static void String_msec(master_record_t *r, char *string) {
+	unsigned long long etime;
+
+	etime = 1000LL * (unsigned long long)r->first + (unsigned long long)r->msec_first;
+	snprintf(string, MAX_STRING_LENGTH-1,"%13llu",  etime);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_msec 
+
+static void String_iacl(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1, "0x%-8x 0x%-8x 0x%-8x",
+		r->ingress_acl_id[0], r->ingress_acl_id[1], r->ingress_acl_id[2]);
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_iacl
+
+static void String_eacl(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1, "%10u %10u %10u",
+		r->egress_acl_id[0], r->egress_acl_id[1], r->egress_acl_id[2]);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_eacl
+
+static void String_xlateSrcAddr(master_record_t *r, char *string) {
+char tmp_str[IP_STRING_LEN];
+
+	tmp_str[0] = 0;
+	if ( (r->xlate_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->xlate_src_ip.v6[0]);
+		ip[1] = htonll(r->xlate_src_ip.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->xlate_src_ip.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s", tag_string, tmp_str);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s", tag_string, tmp_str);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_xlateSrcAddr
+
+static void String_xlateDstAddr(master_record_t *r, char *string) {
+char tmp_str[IP_STRING_LEN];
+
+	tmp_str[0] = 0;
+	if ( (r->xlate_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->xlate_dst_ip.v6[0]);
+		ip[1] = htonll(r->xlate_dst_ip.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->xlate_dst_ip.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s", tag_string, tmp_str);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s", tag_string, tmp_str);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_xlateDstAddr
+
+static void String_xlateSrcPort(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->xlate_src_port);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_xlateSrcPort
+
+static void String_xlateDstPort(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->xlate_dst_port);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_xlateDstPort
+
+static void String_xlateSrcAddrPort(master_record_t *r, char *string) {
+char 	tmp_str[IP_STRING_LEN], portchar;
+
+	tmp_str[0] = 0;
+	if ( (r->xlate_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->xlate_src_ip.v6[0]);
+		ip[1] = htonll(r->xlate_src_ip.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+
+		portchar = '.';
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->xlate_src_ip.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+
+		portchar = ':';
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5i", tag_string, tmp_str, portchar, r->xlate_src_port);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5i", tag_string, tmp_str, portchar, r->xlate_src_port);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_xlateSrcAddrPort
+
+static void String_xlateDstAddrPort(master_record_t *r, char *string) {
+char 	tmp_str[IP_STRING_LEN], portchar;
+char 	icmp_port[MAX_STRING_LENGTH];
+
+	tmp_str[0] = 0;
+	if ( (r->xlate_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->xlate_dst_ip.v6[0]);
+		ip[1] = htonll(r->xlate_dst_ip.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+
+		portchar = '.';
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->xlate_dst_ip.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+
+		portchar = ':';
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+	ICMP_Port_decode(r, icmp_port);
+
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+
+} // End of String_xlateDstAddrPort
+
+static void String_userName(master_record_t *r, char *string) {
+
+	if ( r->username[0] == '\0' ) 
+		snprintf(string, MAX_STRING_LENGTH-1 ,"%s", "<empty>");
+	else
+		snprintf(string, MAX_STRING_LENGTH-1 ,"%s", r->username);
+
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_userName
+
+#endif
+
+#ifdef NEL
+static void String_nevt(master_record_t *r, char *string) {
+
+	switch(r->nat_event) {
+		case 0:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%3s", "INVALID");
+			break;
+		case 1:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "ADD");
+			break;
+		case 2:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "DELETE");
+			break;
+		default:
+			snprintf(string, MAX_STRING_LENGTH-1 ,"%6s", "UNKNOW");
+	}			
+	string[MAX_STRING_LENGTH-1] = '\0';
+} // End of String_nevt
+
+static void String_vrf(master_record_t *r, char *string) {
+
+ 	snprintf(string, MAX_STRING_LENGTH-1, "%10u", r->ingress_vrfid);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_nfc
+
+static void String_natSrcAddr(master_record_t *r, char *string) {
+char tmp_str[IP_STRING_LEN];
+
+	tmp_str[0] = 0;
+	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->nat_inside.v6[0]);
+		ip[1] = htonll(r->nat_inside.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->nat_inside.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s", tag_string, tmp_str);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s", tag_string, tmp_str);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_natSrcAddr
+
+static void String_natDstAddr(master_record_t *r, char *string) {
+char tmp_str[IP_STRING_LEN];
+
+	tmp_str[0] = 0;
+	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->nat_outside.v6[0]);
+		ip[1] = htonll(r->nat_outside.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->nat_outside.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s", tag_string, tmp_str);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s", tag_string, tmp_str);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_natDstAddr
+
+static void String_natSrcPort(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->post_src_port);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_natSrcPort
+
+static void String_natDstPort(master_record_t *r, char *string) {
+
+	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->post_dst_port);
+	string[MAX_STRING_LENGTH-1] = '\0';
+
+} // End of String_natDstPort
+
+static void String_natSrcAddrPort(master_record_t *r, char *string) {
+char 	tmp_str[IP_STRING_LEN], portchar;
+
+	tmp_str[0] = 0;
+	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->nat_inside.v6[0]);
+		ip[1] = htonll(r->nat_inside.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+
+		portchar = '.';
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->nat_inside.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+
+		portchar = ':';
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5i", tag_string, tmp_str, portchar, r->post_src_port);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5i", tag_string, tmp_str, portchar, r->post_src_port);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+} // End of String_natSrcAddrPort
+
+static void String_natDstAddrPort(master_record_t *r, char *string) {
+char 	tmp_str[IP_STRING_LEN], portchar;
+char 	icmp_port[MAX_STRING_LENGTH];
+
+	tmp_str[0] = 0;
+	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
+		uint64_t	ip[2];
+
+		ip[0] = htonll(r->nat_outside.v6[0]);
+		ip[1] = htonll(r->nat_outside.v6[1]);
+		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
+		if ( ! long_v6 ) {
+			condense_v6(tmp_str);
+		}
+
+		portchar = '.';
+	} else {	// IPv4
+		uint32_t	ip;
+		ip = htonl(r->nat_outside.v4);
+		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
+
+		portchar = ':';
+	}
+	tmp_str[IP_STRING_LEN-1] = 0;
+	ICMP_Port_decode(r, icmp_port);
+
+	if ( long_v6 ) 
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
+	else
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
+
+	string[MAX_STRING_LENGTH-1] = 0;
+
+
+} // End of String_natDstAddrPort
+
+#endif
