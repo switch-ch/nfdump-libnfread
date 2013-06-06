@@ -36,4 +36,5 @@ man/Makefile
 man/Makefile.in
 missing
 stamp-h1
+test-driver
 ylwrap
