@@ -1628,9 +1628,15 @@ int	i, max;
 			flow_record->v6.dstaddr[1] &= FlowTable->IPmask[3];
 		}
 
-		if ( FlowTable->apply_netbits )
+		if ( FlowTable->apply_netbits ) {
+			int src_mask = flow_record->src_mask;
+			int dst_mask = flow_record->dst_mask;
 			ApplyNetMaskBits(flow_record, FlowTable->apply_netbits);
-		if ( aggr_record_mask )
+			if ( aggr_record_mask )
+				ApplyAggrMask(flow_record, aggr_record_mask);
+			flow_record->src_mask = src_mask;
+			flow_record->dst_mask = dst_mask;
+		} else if ( aggr_record_mask )
 			ApplyAggrMask(flow_record, aggr_record_mask);
 
 		if ( GuessFlowDirection && ( flow_record->srcport < 1024 && flow_record->dstport > 1024 ) )

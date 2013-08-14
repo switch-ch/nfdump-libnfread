@@ -151,9 +151,6 @@ uint16_t	map_size;
 	// caculate the record size without counters!
 	v5_output_record_base_size = COMMON_RECORD_DATA_SIZE + 8 + extension_size;  // + 8 for 2 x IPv4 addr
  
-	// now the full extension map size
-	map_size	+= sizeof(extension_map_t);
- 
 	// align 32 bits
 	if ( ( map_size & 0x3 ) != 0 )
 		map_size += 2;

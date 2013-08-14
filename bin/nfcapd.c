@@ -763,18 +763,22 @@ int main(int argc, char **argv) {
  
 char	*bindhost, *filter, *datadir, pidstr[32], *launch_process;
 char	*userid, *groupid, *checkptr, *listenport, *mcastgroup, *extension_tags;
-char	*Ident, *pcap_file, *dynsrcdir, pidfile[MAXPATHLEN];
+char	*Ident, *dynsrcdir, pidfile[MAXPATHLEN];
 struct stat fstat;
-srecord_t	*commbuff;
 packet_function_t receive_packet;
 send_peer_t  peer;
 FlowSource_t *fs;
 struct sigaction act;
 int		family, bufflen;
 time_t 	twin, t_start;
-int		sock, err, synctime, do_daemonize, expire, report_sequence, do_xstat;
+int		sock, synctime, do_daemonize, expire, report_sequence, do_xstat;
 int		subdir_index, sampling_rate, compress;
 int		c;
+#ifdef PCAP
+char	*pcap_file;
+ 
+	pcap_file		= NULL;
+#endif
 
 	receive_packet 	= recvfrom;
 	verbose = synctime = do_daemonize = 0;
@@ -802,7 +806,6 @@ int		c;
 	Ident			= "none";
 	FlowSource		= NULL;
 	extension_tags	= DefaultExtensions;
-	pcap_file		= NULL;
 	dynsrcdir		= NULL;
 
 	while ((c = getopt(argc, argv, "46ef:whEVI:DB:b:j:l:M:n:p:P:R:S:s:T:t:x:Xru:g:z")) != EOF) {
@@ -856,7 +859,10 @@ int		c;
 					fprintf(stderr, "ERROR: Path too long!\n");
 					exit(255);
 				}
-				err  = stat(dynsrcdir, &fstat);
+				if ( stat(dynsrcdir, &fstat) < 0 ) {
+					fprintf(stderr, "stat() failed on %s: %s\n", dynsrcdir, strerror(errno));
+					exit(255);
+				}
 				if ( !(fstat.st_mode & S_IFDIR) ) {
 					fprintf(stderr, "No such directory: %s\n", dynsrcdir);
 					break;
@@ -941,7 +947,10 @@ int		c;
 					fprintf(stderr, "ERROR: Path too long!\n");
 					exit(255);
 				}
-				err  = stat(datadir, &fstat);
+				if ( stat(datadir, &fstat) < 0 ) {
+					fprintf(stderr, "stat() failed on %s: %s\n", datadir, strerror(errno));
+					exit(255);
+				}
 				if ( !(fstat.st_mode & S_IFDIR) ) {
 					fprintf(stderr, "No such directory: %s\n", datadir);
 					break;
@@ -1135,8 +1144,6 @@ int		c;
 			close(sock);
 			exit(255);
 		}
-
-		commbuff = (srecord_t *)shmem;
 
 		launcher_pid = fork();
 		switch (launcher_pid) {

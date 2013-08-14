@@ -219,9 +219,11 @@ static struct entry_filter_s {
 
 #define NUM_PTR 16
 
+// globals
+extern uint32_t	twin_first, twin_last;
+
 static char		*first_file, *last_file;
 static char		*current_file = NULL;
-static uint32_t	twin_first, twin_last;
 static stringlist_t source_dirs, file_list;
 
 /* Function prototypes */
@@ -925,7 +927,14 @@ void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multip
 		CleanPath(single_file);
 
 		if ( source_dirs.num_strings == 0 ) {
-				InsertString(&file_list, single_file);
+			stat_record_t stat_ptr;
+			InsertString(&file_list, single_file);
+			if ( !GetStatRecord(single_file, &stat_ptr) ) {
+				exit(250);
+			}
+			twin_first = stat_ptr.first_seen;
+			twin_last  = stat_ptr.last_seen;
+
 		} else {
 			int i;
 
@@ -945,9 +954,15 @@ void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multip
 						// file not found - try to guess subdir
 						char *sub_dir = GuessSubDir(source_dirs.list[i], single_file);
 						if ( sub_dir ) {	// subdir found
+							stat_record_t stat_ptr;
 							snprintf(s, MAXPATHLEN-1, "%s/%s/%s", source_dirs.list[i], sub_dir, single_file);
 							s[MAXPATHLEN-1] = '\0';
 							InsertString(&file_list, s);
+							if ( !GetStatRecord(s, &stat_ptr) ) {
+								exit(250);
+							}
+							twin_first = stat_ptr.first_seen;
+							twin_last  = stat_ptr.last_seen;
 						} else {	// no subdir found
 							fprintf(stderr, "stat() error '%s': %s\n", s, "File not found!");
 						}
@@ -959,7 +974,14 @@ void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multip
 					if ( !S_ISREG(stat_buf.st_mode) ) {
 						fprintf(stderr, "Skip non file entry: '%s'\n", s);
 					} else {
+						stat_record_t stat_ptr;
 						InsertString(&file_list, s);
+						if ( !GetStatRecord(s, &stat_ptr) ) {
+							exit(250);
+						}
+						twin_first = stat_ptr.first_seen;
+						twin_last  = stat_ptr.last_seen;
+				
 					}
 				}
 			}

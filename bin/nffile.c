@@ -253,7 +253,7 @@ void CloseFile(nffile_t *nffile){
 int ChangeIdent(char *filename, char *Ident) {
 file_header_t	FileHeader;
 struct stat stat_buf;
-int fd, ret;
+int fd;
 
 	if ( filename == NULL ) 
 		return 0;
@@ -274,7 +274,11 @@ int fd, ret;
 		return fd;
 	}
 
-	ret = read(fd, (void *)&FileHeader, sizeof(FileHeader));
+	if ( read(fd, (void *)&FileHeader, sizeof(FileHeader)) < 0 ) {
+		LogError("read() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
+		close(fd);
+		return -1;
+	}
 	if ( FileHeader.magic != MAGIC ) {
 		LogError("Open file '%s': bad magic: 0x%X\n", filename, FileHeader.magic );
 		close(fd);
@@ -539,7 +543,6 @@ nffile_t		*nffile;
 } /* End of AppendFile */
 
 int CloseUpdateFile(nffile_t *nffile, char *ident) {
-file_header_t	file_header;
 
 	if ( nffile->block_header->size ) {
 		int ret = WriteBlock(nffile);
@@ -568,7 +571,6 @@ file_header_t	file_header;
 		if ( strlen(nffile->file_header->ident) == 0 ) 
 		strncpy(nffile->file_header->ident, IDENTNONE, IDENTLEN);
 	}
-	file_header.ident[IDENTLEN - 1] = 0;
 
 	if ( write(nffile->fd, (void *)nffile->file_header, sizeof(file_header_t)) <= 0 ) {
 		LogError("write() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
@@ -849,7 +851,7 @@ void		*p = (void *)input_record;
 } // End of ExpandRecord_v1
 
 void UnCompressFile(char * filename) {
-int 			i, flags, compressed, anonymized;
+int 			i, compressed, anonymized;
 ssize_t			ret;
 nffile_t		*nffile_r, *nffile_w;
 stat_record_t	*_s;
@@ -865,7 +867,6 @@ void			*tmp;
 	snprintf(outfile, MAXPATHLEN, "%s-tmp", filename);
 	outfile[MAXPATHLEN-1] = '\0';
 
-	flags = nffile_r->file_header->flags;
 	if ( FILE_IS_COMPRESSED(nffile_r) ) {
 		printf("Uncompress file %s ..\n", filename);
 		compressed = 0;

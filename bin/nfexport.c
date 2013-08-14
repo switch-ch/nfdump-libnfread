@@ -80,23 +80,17 @@ extern extension_descriptor_t extension_descriptor[];
 /* local vars */
 enum CntIndices { FLOWS = 0, INPACKETS, INBYTES, OUTPACKETS, OUTBYTES };
 
-static extension_map_t	**export_maps;
-
 static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile, extension_map_list_t *extension_map_list );
 
 static void ExportExtensionMaps( int aggregate, int bidir, nffile_t *nffile, extension_map_list_t *extension_map_list ) {
 int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
+extension_map_t	*new_map;
 
 	// no extension maps to export - nothing to do
 	if ( extension_map_list->max_used < 0 )
 		return;
 
-	// allocate table for export maps - no more needed than slots used in extension_map_list
-	export_maps   = (extension_map_t **)calloc(extension_map_list->max_used+1, sizeof(extension_map_t *));
-	if ( !export_maps ) {
-		LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
-		exit(255);
-	}
+	new_map = NULL;
 
 	for ( map_id = 0; map_id <= extension_map_list->max_used; map_id++ ) {
 		extension_map_t *SourceMap = extension_map_list->slot[map_id]->map;
@@ -175,7 +169,6 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 		} else {
 			// no missing elements in extension map - we can used the original one
 			// and we are done
-			export_maps[map_id] = SourceMap;
 
 #ifdef DEVEL
 			printf("New map identical => use this map:\n");
@@ -190,8 +183,8 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 		printf("Create new map:\n");
 #endif
 		// new map is different - create the new map
-		export_maps[map_id] = (extension_map_t *)malloc((ssize_t)new_map_size);
-		if ( !export_maps[map_id] ) {
+		new_map = (extension_map_t *)malloc((ssize_t)new_map_size);
+		if ( !new_map ) {
 			LogError("malloc() error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 			exit(255);
 		}
@@ -203,39 +196,42 @@ int map_id, opt_extensions, num_extensions, new_map_size, opt_align;
 			exit(255);
 		}
 		// copy existing map
-		memcpy((void *)export_maps[map_id], (void *)SourceMap, SourceMap->size);
+		memcpy((void *)new_map, (void *)SourceMap, SourceMap->size);
 		
-		export_maps[map_id]->size   = new_map_size;
+		new_map->size   = new_map_size;
 
 		// add the missing extensions to the output map
 		// skip to end of current map
-		while ( export_maps[map_id]->ex_id[i] )
+		while ( new_map->ex_id[i] )
 			i++;
 
 		// add missing map elements
 		if ( aggregate && !has_aggr_flows ) {
-			export_maps[map_id]->ex_id[i++] 	 = EX_AGGR_FLOWS_4;
-			export_maps[map_id]->extension_size += extension_descriptor[EX_AGGR_FLOWS_4].size;
+			new_map->ex_id[i++] 	 = EX_AGGR_FLOWS_4;
+			new_map->extension_size += extension_descriptor[EX_AGGR_FLOWS_4].size;
 		}
 		if ( bidir && !has_out_bytes )  {
-			export_maps[map_id]->ex_id[i++] 	 = EX_OUT_BYTES_8;
-			export_maps[map_id]->extension_size += extension_descriptor[EX_OUT_BYTES_8].size;
+			new_map->ex_id[i++] 	 = EX_OUT_BYTES_8;
+			new_map->extension_size += extension_descriptor[EX_OUT_BYTES_8].size;
 		}
 		if ( bidir && !has_out_packets )  {
-			export_maps[map_id]->ex_id[i++] 	 = EX_OUT_PKG_8;
-			export_maps[map_id]->extension_size += extension_descriptor[EX_OUT_PKG_8].size;
+			new_map->ex_id[i++] 	 = EX_OUT_PKG_8;
+			new_map->extension_size += extension_descriptor[EX_OUT_PKG_8].size;
 		}
 		// end of map tag
-		export_maps[map_id]->ex_id[i++]    = 0;
+		new_map->ex_id[i++]    = 0;
 		if ( opt_align )
-			export_maps[map_id]->ex_id[i]  = 0;
+			new_map->ex_id[i]  = 0;
 
 #ifdef DEVEL
-		PrintExtensionMap(export_maps[map_id]);
+		PrintExtensionMap(new_map);
 #endif
 
+		free(extension_map_list->slot[map_id]->map);
+		extension_map_list->slot[map_id]->map = new_map; 
+
 		// Flush the map to disk
-		AppendToBuffer(nffile, (void *)export_maps[map_id], export_maps[map_id]->size);
+		AppendToBuffer(nffile, (void *)new_map, new_map->size);
 
 	}
 
@@ -397,6 +393,6 @@ char				*string;
 
 	return 1;
 
-} // End of PrintFlowTable
+} // End of ExportFlowTable
 
 

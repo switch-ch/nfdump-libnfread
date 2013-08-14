@@ -388,7 +388,7 @@ char *p, *q, *s;
 		if ( strcmp(p, "all") == 0 ) {
 			for (i=4; extension_descriptor[i].id; i++ ) 
 				if ( extension_descriptor[i].description ) 
-					extension_descriptor[i].enabled = sign == 1 ? : 0;
+					extension_descriptor[i].enabled = sign == 1 ? 1 : 0;
 		} else if ( strcmp(p, "nsel") == 0 ) {
 			extension_descriptor[EX_IO_SNMP_2].enabled		  = 0;
 			extension_descriptor[EX_IO_SNMP_4].enabled		  = 0;
@@ -414,7 +414,7 @@ char *p, *q, *s;
 				case '*': 
 					for (i=4; extension_descriptor[i].id; i++ ) 
 						if ( extension_descriptor[i].description ) 
-							extension_descriptor[i].enabled = sign == 1 ? : 0;
+							extension_descriptor[i].enabled = sign == 1 ? 1 : 0;
 					break;
 				default: {
 					int i = strtol(p, NULL, 10);
