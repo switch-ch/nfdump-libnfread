@@ -99,7 +99,7 @@ fi
 diff test5.out nfdump.test.out > test5.diff || true
 diff test5.diff nfdump.test.diff
 
-
+mkdir memck.$$
 # OpenBSD
 export MALLOC_OPTIONS=AFGJS
 # MacOSX
@@ -114,6 +114,7 @@ export MallocCorruptionAbort=1
 ./nfdump -r test.flows -s record 'host  172.16.14.18'
 ./nfdump -r test.flows -w test-2.flows 'host  172.16.14.18'
 ./nfdump -r test.flows -O tstart -w test-2.flows 'host  172.16.14.18'
+./nfanon -K abcdefghijklmnopqrstuvwxyz012345 -r test.flows -w anon.flows
 rm tmp/nfcapd.* test*.out test*.flows
 rmdir tmp
 

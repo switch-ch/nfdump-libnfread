@@ -167,7 +167,6 @@ int		i;
 static void process_data(void *wfile) {
 master_record_t		master_record;
 common_record_t     *flow_record;
-stat_record_t		sum_statrecord;
 nffile_t			*nffile_r;
 nffile_t			*nffile_w;
 int 		i, done, ret, cnt, verbose;
@@ -210,11 +209,9 @@ int	v1_map_done = 0;
 			fprintf(stderr, " %i Processing %s\r", cnt++, cfile);
 	}
 
-	if ( wfile ) {
-		memset((void *)&sum_statrecord, 0, sizeof(sum_statrecord));
-		SumStatRecords(&sum_statrecord, nffile_r->stat_record);
+	if ( wfile )
 		nffile_w = OpenNewFile(wfile, NULL, FILE_IS_COMPRESSED(nffile_r), 1, NULL);
-	} else
+	else
 		nffile_w = OpenNewFile(outfile, NULL, FILE_IS_COMPRESSED(nffile_r), 1, NULL);
 
 	if ( !nffile_w ) {
@@ -224,6 +221,8 @@ int	v1_map_done = 0;
 		}
 		return;
 	}
+
+	memcpy((void *)nffile_w->stat_record, (void *)nffile_r->stat_record, sizeof(stat_record_t));
 
 	done = 0;
 	while ( !done ) {
@@ -284,8 +283,9 @@ int	v1_map_done = 0;
 						}
 						return;
 					}
+					memcpy((void *)nffile_w->stat_record, (void *)&nffile_r->stat_record, sizeof(stat_record_t));
 				} else {
-					SumStatRecords(&sum_statrecord, nffile_r->stat_record);
+					SumStatRecords(nffile_w->stat_record, nffile_r->stat_record);
 				}
 
 				// continue with next file
@@ -384,15 +384,19 @@ int	v1_map_done = 0;
 
 	} // while
 
+	PackExtensionMapList(extension_map_list);
+	if ( wfile != NULL )
+		CloseUpdateFile(nffile_w, nffile_r->file_header->ident);
+
 	if ( nffile_r ) {
 		CloseFile(nffile_r);
 		DisposeFile(nffile_r);
 	}
+
 	DisposeFile(nffile_w);
 
 	LogError("\n");
 	LogError("Processed %i files.\n", --cnt);
-	PackExtensionMapList(extension_map_list);
 
 } // End of process_data
 

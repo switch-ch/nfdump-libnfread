@@ -74,7 +74,8 @@ static int check_number(char *s, int len);
 
 static int ParseTime(char *s, time_t *t_start);
 
-static uint32_t		twin_first, twin_last;
+uint32_t		twin_first, twin_last;
+
 static int use_syslog = 0;
 
 #ifdef sun

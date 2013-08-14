@@ -46,6 +46,8 @@
 #include <string.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/param.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -81,13 +83,15 @@ FilterEngine_data_t	*Engine;
 int 		byte_mode, packet_mode;
 uint32_t	byte_limit, packet_limit;	// needed for linking purpose only
 
-extension_map_list_t extension_map_list;
+extension_map_list_t *extension_map_list;
 
 /* Local Variables */
 static const char *nfdump_version = VERSION;
 
 /* Function Prototypes */
 static void usage(char *name);
+
+static int CheckRunningOnce(char *pidfile);
 
 static data_row *process(char *filter);
 
@@ -111,6 +115,57 @@ static void usage(char *name) {
 					"-f <filter>\tfilter syntaxfile\n"
 					, name);
 } /* usage */
+
+static int CheckRunningOnce(char *pidfile) {
+int pidf;
+pid_t pid;
+char pidstr[32];
+
+	pidf = open(pidfile, O_RDONLY, 0);
+	if ( pidf > 0 ) {
+		// pid file exists
+		char s[32];
+		ssize_t len;
+		len = read(pidf, (void *)s, 31);
+		close(pidf);
+		s[31] = '\0';
+		if ( len < 0 ) {
+			LogError("read() error existing pid file: %s\n", strerror(errno));
+			return 0;
+		} else {
+			unsigned long pid = atol(s);
+			if ( pid == 0 ) {
+				// garbage - use this file
+				unlink(pidfile);
+			} else {
+				if ( kill(pid, 0) == 0 ) {
+					// process exists
+					LogError("An nftrack process with pid %lu is already running!\n", pid);
+					return 0;
+				} else {
+					// no such process - use this file
+					LogError("The nftrack process with pid %lu died unexpectedly!\n", pid);
+					unlink(pidfile);
+				}
+			}
+		}
+	} 
+
+	pid = getpid();
+	pidf  = open(pidfile, O_RDWR|O_TRUNC|O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+	if ( pidf == -1 ) {
+		LogError("Error opening nftrack pid file: '%s' %s", pidfile, strerror(errno));
+		return 0;
+	}
+	snprintf(pidstr,31,"%lu\n", (unsigned long)pid);
+	if ( write(pidf, pidstr, strlen(pidstr)) <= 0 ) {
+		LogError("Error write nftrack pid file: '%s' %s", pidfile, strerror(errno));
+	}
+	close(pidf);
+
+	return 1;
+
+} // End of CheckRunningOnce
 
 static data_row *process(char *filter) {
 master_record_t		master_record;
@@ -152,9 +207,9 @@ uint64_t total_bytes;
             case NF_CORRUPT:
             case NF_ERROR:
                 if ( ret == NF_CORRUPT ) 
-                    fprintf(stderr, "Skip corrupt data file '%s'\n",GetCurrentFilename());
+                    LogError("Skip corrupt data file '%s'\n",GetCurrentFilename());
                 else 
-                    fprintf(stderr, "Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
+                    LogError("Read error in file '%s': %s\n",GetCurrentFilename(), strerror(errno) );
                 // fall through - get next file in chain
             case NF_EOF: {
 				nffile_t *next = GetNextFile(nffile, 0, 0);
@@ -180,7 +235,7 @@ uint64_t total_bytes;
 		}
 
 		if ( nffile->block_header->id != DATA_BLOCK_TYPE_2 ) {
-			fprintf(stderr, "Can't process block type %u\n", nffile->block_header->id);
+			LogError("Can't process block type %u\n", nffile->block_header->id);
 			continue;
 		}
 
@@ -189,43 +244,50 @@ uint64_t total_bytes;
 		for ( i=0; i < nffile->block_header->NumRecords; i++ ) {
 			int			ret;
 
-            if ( flow_record->type == CommonRecordType ) {
-                if ( extension_map_list.slot[flow_record->ext_map] == NULL ) {
-                    LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
-                } else {
-                    ExpandRecord_v2( flow_record, extension_map_list.slot[flow_record->ext_map], NULL, &master_record);
+			switch ( flow_record->type ) {
+				case CommonRecordType: {
+                	if ( extension_map_list->slot[flow_record->ext_map] == NULL ) {
+                    	LogError("Corrupt data file! No such extension map id: %u. Skip record", flow_record->ext_map );
+                	} else {
+                    	ExpandRecord_v2( flow_record, extension_map_list->slot[flow_record->ext_map], NULL, &master_record);
             
-   					ret = (*Engine->FilterEngine)(Engine);
+   						ret = (*Engine->FilterEngine)(Engine);
 
-					if ( ret == 0 ) { // record failed to pass the filter
-						// increment pointer by number of bytes for netflow record
-						flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
-						// go to next record
-						continue;
-					}
+						if ( ret == 0 ) { // record failed to pass the filter
+							// increment pointer by number of bytes for netflow record
+							flow_record = (common_record_t *)((pointer_addr_t)flow_record + flow_record->size);	
+							// go to next record
+							continue;
+						}
 
 
-					// Add to stat record
-					if ( master_record.prot == 6 ) {
-						port_table[master_record.dstport].proto[tcp].type[flows]++;
-						port_table[master_record.dstport].proto[tcp].type[packets]	+= master_record.dPkts;
-						port_table[master_record.dstport].proto[tcp].type[bytes]	+= master_record.dOctets;
-					} else if ( master_record.prot == 17 ) {
-						port_table[master_record.dstport].proto[udp].type[flows]++;
-						port_table[master_record.dstport].proto[udp].type[packets]	+= master_record.dPkts;
-						port_table[master_record.dstport].proto[udp].type[bytes]	+= master_record.dOctets;
-					}
-             	}
+						// Add to stat record
+						if ( master_record.prot == 6 ) {
+							port_table[master_record.dstport].proto[tcp].type[flows]++;
+							port_table[master_record.dstport].proto[tcp].type[packets]	+= master_record.dPkts;
+							port_table[master_record.dstport].proto[tcp].type[bytes]	+= master_record.dOctets;
+						} else if ( master_record.prot == 17 ) {
+							port_table[master_record.dstport].proto[udp].type[flows]++;
+							port_table[master_record.dstport].proto[udp].type[packets]	+= master_record.dPkts;
+							port_table[master_record.dstport].proto[udp].type[bytes]	+= master_record.dOctets;
+						}
+             		}
+				} break;
+				case ExtensionMapType: {
+                	extension_map_t *map = (extension_map_t *)flow_record;
 
-            } else if ( flow_record->type == ExtensionMapType ) {
-                extension_map_t *map = (extension_map_t *)flow_record;
-
-                if ( Insert_Extension_Map(&extension_map_list, map) ) {
-                     // flush new map
-                } // else map already known and flushed
-
-            } else {
-                fprintf(stderr, "Skip unknown record type %i\n", flow_record->type);
+                	if ( Insert_Extension_Map(extension_map_list, map) ) {
+                     		// flush new map
+                	} // else map already known and flushed
+				} break;
+				case ExporterInfoRecordType:
+				case ExporterStatRecordType:
+				case SamplerInfoRecordype:
+						// Silently skip exporter records
+					break;
+				default: {
+					LogError("Skip unknown record type %i\n", flow_record->type);
+				}
             }
 
 			// Advance pointer by number of bytes for netflow record
@@ -236,6 +298,8 @@ uint64_t total_bytes;
 	CloseFile(nffile);
 	DisposeFile(nffile);
 
+	PackExtensionMapList(extension_map_list);
+
 	return port_table;
 
 } // End of process
@@ -243,9 +307,10 @@ uint64_t total_bytes;
 
 int main( int argc, char **argv ) {
 struct stat stat_buff;
-char c, *wfile, *rfile, *Rfile, *Mdirs, *ffile, *filter, *timeslot, *DBdir;
+char *wfile, *rfile, *Rfile, *Mdirs, *ffile, *filter, *timeslot, *DBdir;
 char datestr[64];
-int ffd, ret, DBinit, AddDB, GenStat, AvStat, output_mode;
+char pidfile[MAXPATHLEN];
+int c, ffd, ret, DBinit, AddDB, GenStat, AvStat, output_mode;
 unsigned int lastupdate, topN;
 data_row *port_table;
 time_t	when;
@@ -336,22 +401,22 @@ struct tm * t1;
 
 	if ( !filter && ffile ) {
 		if ( stat(ffile, &stat_buff) ) {
-			perror("Can't stat file");
+			LogError("stat() filter file: '%s' %s", ffile, strerror(errno));
 			exit(255);
 		}
 		filter = (char *)malloc(stat_buff.st_size);
 		if ( !filter ) {
-			perror("Memory error");
+			LogError("malloc() allocation error in %s line %d: %s\n", __FILE__, __LINE__, strerror(errno) );
 			exit(255);
 		}
 		ffd = open(ffile, O_RDONLY);
 		if ( ffd < 0 ) {
-			perror("Can't open file");
+			LogError("open() filter file: '%s' %s", ffile, strerror(errno));
 			exit(255);
 		}
 		ret = read(ffd, (void *)filter, stat_buff.st_size);
 		if ( ret < 0   ) {
-			perror("Error reading file");
+			LogError("read() filter file: '%s' %s", ffile, strerror(errno));
 			close(ffd);
 			exit(255);
 		}
@@ -359,38 +424,55 @@ struct tm * t1;
 	}
 
 	if ( !DBdir ) {
-		fprintf(stderr, "DB directory required\n");
+		LogError("DB directory required\n");
 		exit(255);
 	}
 
 	InitStat(DBdir);
 
+	// check if pid file exists and if so, if a process with registered pid is running
+	snprintf(pidfile, MAXPATHLEN-1, "%s/nftrack.pid", DBdir);
+	pidfile[MAXPATHLEN-1]= '\0';
+	if ( !CheckRunningOnce(pidfile) ) {
+		LogError("Run once check failed.\n");
+		exit(255);
+	}
+
 	if ( !filter )
 		filter = "any";
 
 	Engine = CompileFilter(filter);
-	if ( !Engine ) 
+	if ( !Engine ) {
+		unlink(pidfile);
 		exit(254);
-	
+	}
+
 	if ( DBinit ) {
 		when = time(NULL);
 		when -= ((when % 300) + 300);
 		InitStatFile();
 		if ( !CreateRRDBs(DBdir, when) ) {
-			fprintf(stderr, "Init DBs failed\n");
+			LogError("Init DBs failed\n");
+			unlink(pidfile);
 			exit(255);
 		}
-		fprintf(stderr, "Port DBs initialized.\n");
+		LogInfo("Port DBs initialized.\n");
+		unlink(pidfile);
 		exit(0);
 	}
 
+	extension_map_list = InitExtensionMaps(NEEDS_EXTENSION_LIST);
+
 	if ( lastupdate ) {
 		when = RRD_LastUpdate(DBdir);
-		if ( !when )
+		if ( !when ) {
+			unlink(pidfile);
 			exit(255);
+		}
 		t1 = localtime(&when);
 		strftime(datestr, 63, "%b %d %Y %T", t1);
-		printf("Last Update: %i, %s\n", (int)when, datestr);
+		LogInfo("Last Update: %i, %s\n", (int)when, datestr);
+		unlink(pidfile);
 		exit(0);
 	}
 
@@ -400,11 +482,13 @@ struct tm * t1;
 		port_table = process(filter);
 //		Lister(port_table);
 		if ( !port_table ) {
+			unlink(pidfile);
 			exit(255);
 		}
 		if ( AddDB ) {
 			if ( !timeslot ) {
-				fprintf(stderr, "Timeslot required!\n");
+				LogError("Timeslot required!\n");
+				unlink(pidfile);
 				exit(255);
 			}
 			UpdateStat(port_table, ISO2UNIX(timeslot));
@@ -415,7 +499,8 @@ struct tm * t1;
 	if ( AvStat ) {
 		port_table = GetStat();
 		if ( !port_table ) {
-			fprintf(stderr, "Unable to get port table!\n");
+			LogError("Unable to get port table!\n");
+			unlink(pidfile);
 			exit(255);
 		}
 		// DoStat
@@ -428,13 +513,15 @@ struct tm * t1;
 		when = ISO2UNIX(timeslot);
 		if ( !port_table ) {
 			if ( !timeslot ) {
-				fprintf(stderr, "Timeslot required!\n");
+				LogError("Timeslot required!\n");
+				unlink(pidfile);
 				exit(255);
 			}
 			port_table = RRD_GetDataRow(DBdir, when);
 		}
 		if ( !port_table ) {
-			fprintf(stderr, "Unable to get port table!\n");
+			LogError("Unable to get port table!\n");
+			unlink(pidfile);
 			exit(255);
 		}
 		// DoStat
@@ -442,6 +529,7 @@ struct tm * t1;
 	}
 
 	CloseStat();
+	unlink(pidfile);
 
 	return 0;
 }

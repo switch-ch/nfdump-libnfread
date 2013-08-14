@@ -2,8 +2,8 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_REVISION($Revision: 193 $)dnl
-AC_INIT(nfdump, 1.6.10 $Date: 2013-04-30 16:34:53 +0200 (Tue, 30 Apr 2013) $, phaag@users.sourceforge.net) 
+AC_REVISION($Revision: 213 $)dnl
+AC_INIT(nfdump, 1.6.10p1 $Date: 2013-08-06 10:31:45 +0200 (Tue, 06 Aug 2013) $, phaag@users.sourceforge.net)
 #AC_CONFIG_SRCDIR([grammar.y])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE()

@@ -1682,19 +1682,21 @@ char				*string;
 				case zero32:
 					*((uint32_t *)&out[output_offset]) = 0;
 					break;
-				case zero64: 
-						*((uint64_t *)&out[output_offset]) = 0;
-					 break;
+				case zero64: {   
+						*((uint32_t *)&out[output_offset])   = 0;
+						*((uint32_t *)&out[output_offset+4]) = 0;
+					} break;
 				case zero96: 
 					{   *((uint32_t *)&out[output_offset])   = 0;
 						*((uint32_t *)&out[output_offset+4]) = 0;
 						*((uint32_t *)&out[output_offset+8]) = 0;
 					} break;
-				case zero128: 
-						*((uint64_t *)&out[output_offset]) = 0;
-						*((uint64_t *)&out[output_offset+8]) = 0;
-					break;
-				
+				case zero128: {   
+						*((uint32_t *)&out[output_offset])   = 0;
+						*((uint32_t *)&out[output_offset+4]) = 0;
+						*((uint32_t *)&out[output_offset+8]) = 0;
+						*((uint32_t *)&out[output_offset+12]) = 0;
+					} break;
 				default:
 					syslog(LOG_ERR, "Process_v9: Software bug! Unknown Sequence: %u. at %s line %d", 
 						table->sequence[i].id, __FILE__, __LINE__);
