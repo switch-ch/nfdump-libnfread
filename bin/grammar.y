@@ -943,7 +943,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| NAT EVENT REASON {
-#ifdef NEL
+#ifdef NSEL
 		if ( strncasecmp($3,"invalid", 6) == 0) {
 			$$.self = NewBlock(OffsetNELcommon, MasNATevent, ( NEL_EVENT_INVALID << ShiftNATevent) & MasNATevent, CMP_EQ, FUNC_NONE, NULL );
 		} else if( strncasecmp($3,"add", 6) == 0) {
@@ -961,7 +961,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| NAT EVENT comp NUMBER {
-#ifdef NEL
+#ifdef NSEL
 		if ( $4 > 255 ) {
 			yyerror("Invalid event ID");
 			YYABORT;
@@ -974,7 +974,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| INGRESS VRF comp NUMBER {
-#ifdef NEL
+#ifdef NSEL
 		if ( $4 > 0xFFFFFFFFLL ) {
 			yyerror("Invalid vrf ID");
 			YYABORT;
@@ -987,7 +987,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| dqual NPORT comp NUMBER {	
-#ifdef NEL
+#ifdef NSEL
 		if ( $4 > 65535 ) {
 			yyerror("Port outside of range 0..65535");
 			YYABORT;
@@ -995,22 +995,22 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 
 		switch ( $1.direction ) {
 			case SOURCE:
-				$$.self = NewBlock(OffsetNELcommon, MaskPostSRCPort, ($4 << ShiftPostSRCPort) & MaskPostSRCPort, $3.comp, FUNC_NONE, NULL );
+				$$.self = NewBlock(OffsetXLATEPort, MaskXLATESRCPORT, ($4 << ShiftXLATESRCPORT) & MaskXLATESRCPORT, $3.comp, FUNC_NONE, NULL );
 				break;
 			case DESTINATION:
-				$$.self = NewBlock(OffsetNELcommon, MaskPostDSTPort, ($4 << ShiftPostDSTPort) & MaskPostDSTPort, $3.comp, FUNC_NONE, NULL );
+				$$.self = NewBlock(OffsetXLATEPort, MaskXLATEDSTPORT, ($4 << ShiftXLATEDSTPORT) & MaskXLATEDSTPORT, $3.comp, FUNC_NONE, NULL );
 				break;
 			case DIR_UNSPEC:
 			case SOURCE_OR_DESTINATION:
 				$$.self = Connect_OR(
-					NewBlock(OffsetNELcommon, MaskPostSRCPort, ($4 << ShiftPostSRCPort) & MaskPostSRCPort, $3.comp, FUNC_NONE, NULL ),
-					NewBlock(OffsetNELcommon, MaskPostDSTPort, ($4 << ShiftPostDSTPort) & MaskPostDSTPort, $3.comp, FUNC_NONE, NULL )
+					NewBlock(OffsetXLATEPort, MaskXLATESRCPORT, ($4 << ShiftXLATESRCPORT) & MaskXLATESRCPORT, $3.comp, FUNC_NONE, NULL ),
+					NewBlock(OffsetXLATEPort, MaskXLATEDSTPORT, ($4 << ShiftXLATEDSTPORT) & MaskXLATEDSTPORT, $3.comp, FUNC_NONE, NULL )
 				);
 				break;
 			case SOURCE_AND_DESTINATION:
 				$$.self = Connect_AND(
-					NewBlock(OffsetNELcommon, MaskPostSRCPort, ($4 << ShiftPostSRCPort) & MaskPostSRCPort, $3.comp, FUNC_NONE, NULL ),
-					NewBlock(OffsetNELcommon, MaskPostDSTPort, ($4 << ShiftPostDSTPort) & MaskPostDSTPort, $3.comp, FUNC_NONE, NULL )
+					NewBlock(OffsetXLATEPort, MaskXLATESRCPORT, ($4 << ShiftXLATESRCPORT) & MaskXLATESRCPORT, $3.comp, FUNC_NONE, NULL ),
+					NewBlock(OffsetXLATEPort, MaskXLATEDSTPORT, ($4 << ShiftXLATEDSTPORT) & MaskXLATEDSTPORT, $3.comp, FUNC_NONE, NULL )
 				);
 				break;
 			default:
@@ -1025,7 +1025,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| dqual NIP STRING { 	
-#ifdef NEL
+#ifdef NSEL
 		int af, bytes, ret;
 
 		ret = parse_ip(&af, $3, IPstack, &bytes, ALLOW_LOOKUP, &num_ip);
@@ -1040,7 +1040,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			// could not resolv host => 'not any'
 			$$.self = Invert(NewBlock(OffsetProto, 0, 0, CMP_EQ, FUNC_NONE, NULL )); 
 		} else {
-			uint64_t offsets[4] = {OffsetGlobalInsidev6a, OffsetGlobalInsidev6b, OffsetGlobalOutsidev6a, OffsetGlobalOutsidev6b };
+			uint64_t offsets[4] = {OffsetXLATESRCv6a, OffsetXLATESRCv6b, OffsetXLATEDSTv6a, OffsetXLATEDSTv6b };
 			if ( af && (( af == PF_INET && bytes != 4 ) || ( af == PF_INET6 && bytes != 16 ))) {
 				yyerror("incomplete IP address");
 				YYABORT;
@@ -1076,7 +1076,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 
 	| dqual AS comp NUMBER {	
-		if ( $4 > 0xfFFFFFFF || $4 < 0 ) {
+		if ( $4 > 0xfFFFFFFF ) {
 			yyerror("AS number of range");
 			YYABORT;
 		}
@@ -1413,7 +1413,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 	}
 	
 	| dqual VLAN NUMBER {	
-		if ( $3 > 65535 || $3 < 0 ) {
+		if ( $3 > 65535 ) {
 			yyerror("VLAN number of range 0..65535");
 			YYABORT;
 		}
@@ -1595,7 +1595,7 @@ term:	ANY { /* this is an unconditionally true expression, as a filter applies i
 			}
 			int i = (int)strtol(s, (char **)NULL, 10);
 
-			if ( $4 < 0 || $4 > 7 ) {
+			if ( $4 > 7 ) {
 				yyerror("MPLS exp value out of range");
 				YYABORT;
 			}

@@ -100,6 +100,8 @@ void flow_record_to_pipe(void *record, char ** s, int tag);
 
 void flow_record_to_csv(void *record, char ** s, int tag);
 
+void flow_record_to_null(void *record, char ** s, int tag);
+
 int ParseOutputFormat(char *format, int plain_numbers, printmap_t *printmap);
 
 void format_special(void *record, char ** s, int tag);
@@ -109,23 +111,9 @@ uint32_t Get_fwd_status_id(char *status);
 
 char *Get_fwd_status_name(uint32_t id);
 
-#define FIXED_WIDTH 1
-#define VAR_LENGTH  0
+void Proto_string(uint8_t protonum, char *protostr);
 
-#ifdef __SUNPRO_C
-extern 
-#endif
-inline void Proto_string(uint8_t protonum, char *protostr);
-
-#ifdef __SUNPRO_C
-extern 
-#endif
-inline void format_number(uint64_t num, char *s, int fixed_width);
-
-#ifdef __SUNPRO_C
-extern 
-#endif
-inline void condense_v6(char *s);
+void condense_v6(char *s);
 
 #define TAG_CHAR ''
 

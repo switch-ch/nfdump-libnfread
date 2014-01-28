@@ -115,7 +115,9 @@ export MallocCorruptionAbort=1
 ./nfdump -r test.flows -w test-2.flows 'host  172.16.14.18'
 ./nfdump -r test.flows -O tstart -w test-2.flows 'host  172.16.14.18'
 ./nfanon -K abcdefghijklmnopqrstuvwxyz012345 -r test.flows -w anon.flows
-rm tmp/nfcapd.* test*.out test*.flows
-rmdir tmp
+rm -f tmp/nfcapd.* test*.out test*.flows
+[ -d tmp ] && rmdir tmp
+[ -d memck.$$ ] && rm -rf  memck.$$
+
 
 echo All tests successful. || rm -rf memck.$$

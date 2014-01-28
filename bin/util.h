@@ -48,6 +48,12 @@
 #	define htonll(n)	(((uint64_t)htonl(n)) << 32) + htonl((n) >> 32)
 #endif
 
+#define _1KB (double)(1000.0)
+#define _1MB (double)(1000.0 * 1000.0)
+#define _1GB (double)(1000.0 * 1000.0 * 1000.0)
+#define _1TB (double)(1000.0 * 1000.0 * 1000.0 * 1000.0)
+
+
 typedef struct stringlist_s {
 	uint32_t	block_size;
 	uint32_t	max_index;
@@ -76,6 +82,13 @@ char *TimeString(time_t start, time_t end);
 char *UNIX2ISO(time_t t);
 
 time_t ISO2UNIX(char *timestring);
+
+#define NUMBER_STRING_SIZE	32
+#define DONT_SCALE_NUMBER 0
+#define DO_SCALE_NUMBER   1
+#define FIXED_WIDTH 	  1
+#define VAR_LENGTH  	  0
+void format_number(uint64_t num, char *s, int scale, int fixed_width);
 
 void SetupInputFileSequence(char *multiple_dirs, char *single_file, char *multiple_files);
 

@@ -958,8 +958,10 @@ typedef struct tpl_ext_37_s {
 /*
  * NSEL xlate ports
  * +----+--------------+--------------+--------------+--------------+
- * |  0 |  NF_F_XLATE_SRC_PORT(40003) |  NF_F_XLATE_DST_PORT(40004) |
+ * |  0 |  NF_F_XLATE_SRC_PORT(227)   |  NF_F_XLATE_DST_PORT(228)   |
  * +----+--------------+--------------+--------------+--------------+
+ * ASA 8.4 compatibility mapping 40003 -> 227
+ * ASA 8.4 compatibility mapping 40004 -> 228
  */
 #define EX_NSEL_XLATE_PORTS	38
 typedef struct tpl_ext_38_s {
@@ -971,8 +973,10 @@ typedef struct tpl_ext_38_s {
 /*
  * NSEL xlate v4 IP address
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  0 |           NF_F_XLATE_SRC_ADDR_IPV4(40001)                 |              NF_F_XLATE_DST_ADDR_IPV4(40002)              |
+ * |  0 |                NF_F_XLATE_SRC_ADDR_IPV4(225)              |                NF_F_XLATE_DST_ADDR_IPV4(226)              |
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
+ * ASA 8.4 compatibility mapping 40001 -> 225
+ * ASA 8.4 compatibility mapping 40002 -> 226
  */
 #define EX_NSEL_XLATE_IP_v4	39
 typedef struct tpl_ext_39_s {
@@ -984,13 +988,13 @@ typedef struct tpl_ext_39_s {
 /*
  * NSEL xlate v6 IP address - not yet implemented by CISCO
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  0 |                                                         xlate src ip (xx - unknown)                                   |
+ * |  0 |                                                         xlate src ip (281)                                            |
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  1 |                                                         xlate src ip (xx - unknown)                                   |
+ * |  1 |                                                         xlate src ip (281)                                            |
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  2 |                                                         xlate dst ip (xx - unknown)                                   |
+ * |  2 |                                                         xlate dst ip (282)                                            |
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  3 |                                                         xlate dst ip (xx - unknown)                                   |
+ * |  3 |                                                         xlate dst ip (282)                                            |
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
  */
 #define EX_NSEL_XLATE_IP_v6	40
@@ -1078,9 +1082,9 @@ typedef struct tpl_ext_latency_s {
 /*
  * NEL xlate ports
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  0 |NAT_EVENT(230)|     flags    |            fill             | NF_N_POST_NAPT_SRC_PORT(227)| NF_N_POST_NAPT_DST_PORT(228)|
+ * |  0 |NAT_EVENT(230)|     flags    |            fill             |  src port xlate ASA 8.4     |  dst port xlate ASA 8.4     |
  * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  1 |                  NF_N_INGRESS_VRFID(234)                  |
+ * |  1 |                 NF_N_INGRESS_VRFID(234)                   |
  * +----+--------------+--------------+--------------+--------------+
  */
 #define EX_NEL_COMMON 46
@@ -1088,45 +1092,25 @@ typedef struct tpl_ext_46_s {
 	uint8_t		nat_event;
 	uint8_t		flags;
 	uint16_t	fill;
-	uint16_t	post_src_port;
-	uint16_t	post_dst_port;
+	uint16_t	src_xlate_84;
+	uint16_t	dst_xlate_84;
 	uint32_t	ingress_vrfid;
 	uint8_t		data[4];	// points to further data
 } tpl_ext_46_t;
 
-/*
- * NEL global v4 IP address
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  0 |              NF_N_NAT_INSIDE_GLOBAL_IPV4(225)             |             NF_N_NAT_OUTSIDE_GLOBAL_IPV4(226)             |
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- */
 #define EX_NEL_GLOBAL_IP_v4	47
+/* 
+ * no longer used. Mapped to NSEL extension EX_NSEL_XLATE_IP_v4
+ */
 typedef struct tpl_ext_47_s {
-	uint32_t	nat_inside;
-	uint32_t	nat_outside;
-	uint8_t		data[4];	// points to further data
+	uint32_t    nat_inside;
+	uint32_t    nat_outside;
+	uint8_t     data[4];    // points to further data
 } tpl_ext_47_t;
 
-/*
- * NEL global v6 IP address - not yet implemented by CISCO
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  0 |                                            global inside ip (xx - unknown)                                            |
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  1 |                                            global inside ip (xx - unknown)                                            |
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  2 |                                            global outside ip (xx - unknown)                                           |
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- * |  3 |                                            global outside ip (xx - unknown)                                           |
- * +----+--------------+--------------+--------------+--------------+--------------+--------------+--------------+--------------+
- */
-#define EX_NEL_GLOBAL_IP_v6	48
-typedef struct tpl_ext_48_s {
-	uint64_t	nat_inside[2];
-	uint64_t	nat_outside[2];
-	uint8_t		data[4];	// points to further data
-} tpl_ext_48_t;
+#define EX_NEL_RESERVED_1	48
 
-#define EX_NEL_RESERVED	49
+#define EX_NEL_RESERVED_2	49
 
 
 /* 
@@ -1219,17 +1203,10 @@ typedef struct extension_map17_s {
 */
 
 // see nfx.c - extension_descriptor
-#ifdef NEL
-// Defaults for NEL
-#define DefaultExtensions  "1,31,32"
-#endif
-
 #ifdef NSEL
 // Defaults for NSEL
-#define DefaultExtensions  "1,8,26,27,28,29,30"
-#endif
-
-#ifndef DefaultExtensions
+#define DefaultExtensions  "1,8,26,27,28,29,30,31"
+#else
 // Collector netflow defaults
 #define DefaultExtensions  "1,2"
 #endif
@@ -1947,72 +1924,26 @@ typedef struct master_record_s {
 #	define OffsetUsername  NSEL_BASE_OFFSET+10
 	char username[72];
 
-#endif
-
 	// NEL extensions
-#ifdef NEL 
 #define NEL_BASE_OFFSET     (offsetof(master_record_t, nat_event) >> 3)
 	// common block
 #   define OffsetNELcommon  NEL_BASE_OFFSET
-#   define OffsetVRFID  	NEL_BASE_OFFSET+1
-	uint8_t		nat_event;				// OffsetNELcommon 0xff00'00000'0000'0000
+#   define OffsetVRFID  	OffsetNELcommon
+	uint8_t		nat_event;				// OffsetNELcommon 0xff00'0000'0000'0000
 	uint8_t		nat_flags;
 	uint16_t	nat_fill;
-	uint16_t	post_src_port;			// OffsetNELcommon 0x0000'0000'ffff'0000
-	uint16_t	post_dst_port;			// OffsetNELcommon 0x0000'0000'0000'ffff
-	uint32_t	ingress_vrfid;			// OffsetVRFID	   0xffff'ffff'0000'0000
-	uint32_t	nat_fill2;				// aligne 64 bit
+	uint32_t	ingress_vrfid;			// OffsetVRFID	   0x0000'0000'ffff'ffff
 
 #ifdef WORDS_BIGENDIAN
 #	define MasNATevent		0xFF00000000000000LL
 #	define ShiftNATevent	56
-#	define MaskPostSRCPort	0x00000000FFFF0000LL
-#	define ShiftPostSRCPort	16
-#	define MaskPostDSTPort	0x000000000000FFFFLL
-#	define ShiftPostDSTPort	0
-#	define MaskVRFID		0xFFFFFFFF00000000LL
-#	define ShiftVRFID		32
+#	define MaskVRFID		0x00000000FFFFFFFFLL
+#	define ShiftVRFID		0
 #else
 #	define MasNATevent		0x00000000000000FFLL
 #	define ShiftNATevent	0
-#	define MaskPostSRCPort	0x0000FFFF00000000LL
-#	define ShiftPostSRCPort	32
-#	define MaskPostDSTPort	0xFFFF000000000000LL
-#	define ShiftPostDSTPort	48
-#	define MaskVRFID		0x00000000FFFFFFFFLL
-#	define ShiftVRFID		0
-#endif
-
-#   define OffsetGlobalInsideIP NEL_BASE_OFFSET+2
-	ip_addr_t	nat_inside;		// ipv4  OffsetGlobalInsideIP +1 0x0000'0000'ffff'ffff
-								// ipv6	 OffsetGlobalInsideIP 	 0xffff'ffff'ffff'ffff
-								// ipv6	 OffsetGlobalInsideIP	 0xffff'ffff'ffff'ffff
-
-	ip_addr_t	nat_outside;	// ipv4  OffsetGlobalOutsideIP +1 0x0000'0000'ffff'ffff
-								// ipv6	 OffsetGlobalOutsideIP 	 0xffff'ffff'ffff'ffff
-								// ipv6	 OffsetGlobalOutsideIP 	 0xffff'ffff'ffff'ffff
-#ifdef WORDS_BIGENDIAN
-#	define OffsetGlobalInsidev4	  OffsetGlobalInsideIP+1
-#	define MaskGlobalIPv4  	 	  0x00000000fFFFFFFFLL
-#	define ShiftGlobalIPv4 	 	  0
-
-#	define OffsetGlobalInsidev6a  OffsetGlobalInsideIP
-#	define OffsetGlobalInsidev6b  OffsetGlobalInsideIP+1
-
-#	define OffsetGlobalOutsidev6a OffsetGlobalInsideIP+2
-#	define OffsetGlobalOutsidev6b OffsetGlobalInsideIP+3
-
-#else
-#	define OffsetGlobalInsidev4	  OffsetGlobalInsideIP+1
-#	define MaskGlobalIPv4  	 	  0xFFFFFFFF00000000LL
-#	define ShiftGlobalIPv4 	 	  32
-
-#	define OffsetGlobalInsidev6a  OffsetGlobalInsideIP
-#	define OffsetGlobalInsidev6b  OffsetGlobalInsideIP+1
-
-#	define OffsetGlobalOutsidev6a OffsetGlobalInsideIP+2
-#	define OffsetGlobalOutsidev6b OffsetGlobalInsideIP+3
-
+#	define MaskVRFID		0xFFFFFFFF00000000LL
+#	define ShiftVRFID		32
 #endif
 
 #endif

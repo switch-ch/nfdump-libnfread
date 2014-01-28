@@ -532,6 +532,7 @@ pkt->vlans[pkt->vlan_count].pcp = (p[0] >> 5) & 7;
 		return;
 	}
 
+	size_payload  = 0;
 	Node->packets = 1;
 	Node->bytes   = len;
 	Node->proto   = proto;

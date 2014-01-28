@@ -404,35 +404,24 @@ void		*p = (void *)input_record;
 				output_record->username[sizeof(output_record->username)-1] = '\0';	// safety 0
 				p = (void *)tpl->data;
 			} break;
-#endif
-#ifdef NEL
 			case EX_NEL_COMMON: {
 				tpl_ext_46_t *tpl = (tpl_ext_46_t *)p;
 				output_record->nat_event = tpl->nat_event;
-				output_record->post_src_port = tpl->post_src_port;
-				output_record->post_dst_port = tpl->post_dst_port;
+				output_record->xlate_src_port = tpl->src_xlate_84;
+				output_record->xlate_dst_port = tpl->dst_xlate_84;
 				output_record->ingress_vrfid = tpl->ingress_vrfid;
 				p = (void *)tpl->data;
 			} break;
 			case EX_NEL_GLOBAL_IP_v4: {
 				tpl_ext_47_t *tpl = (tpl_ext_47_t *)p;
-				output_record->nat_inside.v6[0] = 0;
-				output_record->nat_inside.v6[1] = 0;
-				output_record->nat_inside.v4	= tpl->nat_inside;
-				output_record->nat_outside.v6[0] = 0;
-				output_record->nat_outside.v6[1] = 0;
-				output_record->nat_outside.v4	= tpl->nat_outside;
+				output_record->xlate_src_ip.v6[0] = 0;
+				output_record->xlate_src_ip.v6[1] = 0;
+				output_record->xlate_src_ip.v4	= tpl->nat_inside;
+				output_record->xlate_dst_ip.v6[0] = 0;
+				output_record->xlate_dst_ip.v6[1] = 0;
+				output_record->xlate_dst_ip.v4	= tpl->nat_outside;
 				p = (void *)tpl->data;
 				output_record->nat_flags = 0;
-				} break;
-			case EX_NEL_GLOBAL_IP_v6: {
-				tpl_ext_48_t *tpl = (tpl_ext_48_t *)p;
-				output_record->nat_inside.v6[0] = tpl->nat_inside[0];
-				output_record->nat_inside.v6[1] = tpl->nat_inside[1];
-				output_record->nat_outside.v6[0] = tpl->nat_outside[0];
-				output_record->nat_outside.v6[1] = tpl->nat_outside[1];
-				p = (void *)tpl->data;
-				output_record->nat_flags = 1;
 				} break;
 #endif
 		}
@@ -741,31 +730,14 @@ int		i;
 				tpl->username[sizeof(tpl->username)-1] = '\0';	// safety 0
 				p = (void *)tpl->data;
 			} break;
-#endif
-#ifdef NEL
 			case EX_NEL_COMMON: {
 				tpl_ext_46_t *tpl = (tpl_ext_46_t *)p;
 				tpl->nat_event  = master_record->nat_event;
+				tpl->src_xlate_84  = 0;
+				tpl->dst_xlate_84  = 0;
 				tpl->fill  = 0;
 				tpl->flags = 0;
-				tpl->post_src_port	 = master_record->post_src_port;
-				tpl->post_dst_port	 = master_record->post_dst_port;
 				tpl->ingress_vrfid   = master_record->ingress_vrfid;
-				p = (void *)tpl->data;
-				} break;
-			case EX_NEL_GLOBAL_IP_v4: {
-				tpl_ext_47_t *tpl = (tpl_ext_47_t *)p;
-				tpl->nat_inside = master_record->nat_inside.v4;
-				tpl->nat_outside = master_record->nat_outside.v4;
-				p = (void *)tpl->data;
-				} break;
-			case EX_NEL_GLOBAL_IP_v6: {
-				tpl_ext_48_t *tpl = (tpl_ext_48_t *)p;
-				tpl->nat_inside[0] = master_record->nat_inside.v6[0];
-				tpl->nat_inside[1] = master_record->nat_inside.v6[1];
-				p = (void *)tpl->data;
-				tpl->nat_outside[0] = master_record->nat_outside.v6[0];
-				tpl->nat_outside[1] = master_record->nat_outside.v6[1];
 				p = (void *)tpl->data;
 				} break;
 #endif

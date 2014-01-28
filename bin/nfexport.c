@@ -94,7 +94,7 @@ extension_map_t	*new_map;
 
 	for ( map_id = 0; map_id <= extension_map_list->max_used; map_id++ ) {
 		extension_map_t *SourceMap = extension_map_list->slot[map_id]->map;
-		int i, has_aggr_flows, has_out_bytes, has_out_packets;
+		int i, has_aggr_flows, has_out_bytes, has_out_packets, has_nat;
 		// skip maps, never referenced
 
 #ifdef DEVEL
@@ -115,11 +115,13 @@ extension_map_t	*new_map;
 		has_aggr_flows  = 0;
 		has_out_bytes	= 0;
 		has_out_packets	= 0;
+		// parse map for older NEL nat extension
+		has_nat			= 0;
 
 		num_extensions = 0;
 		i = 0;
 		while ( SourceMap->ex_id[i] ) {
-			switch (SourceMap->ex_id[i++]) {
+			switch (SourceMap->ex_id[i]) {
 				case EX_AGGR_FLOWS_4:
 				case EX_AGGR_FLOWS_8:
 					has_aggr_flows  = 1;
@@ -132,13 +134,18 @@ extension_map_t	*new_map;
 				case EX_OUT_PKG_8:
 					has_out_packets	= 1;
 					break;
+				case EX_NEL_GLOBAL_IP_v4:
+					// Map old nat extension to common NSEL extension
+					SourceMap->ex_id[i] = EX_NSEL_XLATE_IP_v4;
+					has_nat	= 1;
 				// default: nothing to do
 			}
+			i++;
 			num_extensions++;
 		}
 #ifdef DEVEL
-		printf("map: num_extensions: %i, has_aggr_flows: %i, has_out_bytes: %i, has_out_packets: %i\n", 
-			num_extensions, has_aggr_flows, has_out_bytes, has_out_packets);
+		printf("map: num_extensions: %i, has_aggr_flows: %i, has_out_bytes: %i, has_out_packets: %i, has_nat: %i\n", 
+			num_extensions, has_aggr_flows, has_out_bytes, has_out_packets, has_nat);
 #endif
 
 		// count missing extensions
@@ -152,8 +159,10 @@ extension_map_t	*new_map;
 		if ( bidir && !has_out_packets ) 
 			opt_extensions++;
 
+		opt_extensions += has_nat;
 		// calculate new map size
-		new_map_size = sizeof(extension_map_t) + ( num_extensions + opt_extensions ) * sizeof(uint16_t);
+		new_map_size = sizeof(extension_map_t) + ( num_extensions + opt_extensions) * sizeof(uint16_t);
+
 #ifdef DEVEL
 		printf("opt_extensions: %i, new_map_size: %i\n", opt_extensions,new_map_size );
 		PrintExtensionMap(SourceMap);
@@ -205,6 +214,10 @@ extension_map_t	*new_map;
 		while ( new_map->ex_id[i] )
 			i++;
 
+		if ( has_nat ) {
+			new_map->ex_id[i++] 	 = EX_NSEL_XLATE_PORTS;
+			new_map->extension_size += extension_descriptor[EX_NSEL_XLATE_PORTS].size;
+		}
 		// add missing map elements
 		if ( aggregate && !has_aggr_flows ) {
 			new_map->ex_id[i++] 	 = EX_AGGR_FLOWS_4;
