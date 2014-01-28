@@ -531,3 +531,37 @@ void InsertString(stringlist_t *list, char *string) {
 
 } // End of InsertString
 
+void format_number(uint64_t num, char *s, int scale, int fixed_width) {
+double f = num;
+
+	if ( !scale ) {
+		snprintf(s, 31, "%llu", (long long unsigned)num);
+	} else {
+
+		if ( f >= _1TB ) {
+			if ( fixed_width ) 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%5.1f T", f / _1TB );
+			else 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%.1f T", f / _1TB );
+		} else if ( f >= _1GB ) {
+			if ( fixed_width ) 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%5.1f G", f / _1GB );
+			else 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%.1f G", f / _1GB );
+		} else if ( f >= _1MB ) {
+			if ( fixed_width ) 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%5.1f M", f / _1MB );
+			else 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%.1f M", f / _1MB );
+		} else  {
+			if ( fixed_width ) 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%4.0f", f );
+			else 
+				snprintf(s, NUMBER_STRING_SIZE-1, "%.0f", f );
+		} 
+		s[NUMBER_STRING_SIZE-1] = '\0';
+	}
+
+} // End of format_number
+
+

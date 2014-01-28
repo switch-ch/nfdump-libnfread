@@ -158,6 +158,21 @@ int		i;
 				master_record->ip_router.v6[0] = anon_ip[0];
 				master_record->ip_router.v6[1] = anon_ip[1];
 				} break;
+#ifdef NSEL
+			case EX_NSEL_XLATE_IP_v4:
+				master_record->xlate_src_ip.v4 = anonymize(master_record->xlate_src_ip.v4);
+				master_record->xlate_dst_ip.v4 = anonymize(master_record->xlate_dst_ip.v4);
+				break;
+			case EX_NSEL_XLATE_IP_v6: {
+				uint64_t    anon_ip[2];
+				anonymize_v6(master_record->xlate_src_ip.v6, anon_ip);
+				master_record->xlate_src_ip.v6[0] = anon_ip[0];
+				master_record->xlate_src_ip.v6[1] = anon_ip[1];
+				anonymize_v6(master_record->xlate_dst_ip.v6, anon_ip);
+				master_record->xlate_dst_ip.v6[0] = anon_ip[0];
+				master_record->xlate_dst_ip.v6[1] = anon_ip[1];
+				} break;
+#endif
 		}
 	}
 

@@ -2,12 +2,12 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ(2.59)
-AC_REVISION($Revision: 213 $)dnl
-AC_INIT(nfdump, 1.6.10p1 $Date: 2013-08-06 10:31:45 +0200 (Tue, 06 Aug 2013) $, phaag@users.sourceforge.net)
+AC_REVISION($Revision: 220 $)dnl
+AC_INIT(nfdump, 1.6.11 $Date: 2013-11-16 09:04:43 +0100 (Sat, 16 Nov 2013) $, phaag@users.sourceforge.net)
 #AC_CONFIG_SRCDIR([grammar.y])
 AC_CONFIG_HEADER([config.h])
 AM_INIT_AUTOMAKE()
-
+ 
 # Checks for programs.
 AC_PROG_CC
 AM_PROG_CC_C_O
@@ -55,17 +55,17 @@ if test "${enable_compat15}" = "yes" ; then
 fi
 
 AC_ARG_ENABLE(nsel,
-[  --enable-nsel           compile nfdump, to read and process ASA/NSEL event data; default is NO])
+[  --enable-nsel           compile nfdump, to read and process ASA/NSEL/NEL event data; default is NO])
 
 if test "${enable_nsel}" = "yes" ; then
 	CFLAGS="$CFLAGS -DNSEL"
 fi
 
 AC_ARG_ENABLE(nel,
-[  --enable-nel            compile nfdump, to read and process NAT/NEL event data; default is NO])
+[  --enable-nel            (depricated) compile nfdump, to read and process NAT/NSEL/NEL event data; default is NO])
 
 if test "${enable_nel}" = "yes" ; then
-	CFLAGS="$CFLAGS -DNEL"
+	CFLAGS="$CFLAGS -DNSEL"
 fi
 
 AC_ARG_ENABLE(fixtimebug,

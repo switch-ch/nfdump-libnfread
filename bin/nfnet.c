@@ -47,13 +47,13 @@
 #include <stdlib.h>
 #include <time.h>
 #include <netinet/in.h>
-#include <syslog.h>
 #include <string.h>
 
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
 
+#include "util.h"
 #include "nfnet.h"
 
 /* at least this number of byytes required, if we change the socket buffer */
@@ -76,7 +76,7 @@ int 			error, p, sockfd;
 
 	if ( !listenport ) {
         fprintf(stderr, "listen port required!\n");
-        syslog(LOG_ERR, "listen port required!\n");
+        LogError("listen port required!");
 		return -1;
 	}
 
@@ -99,9 +99,9 @@ int 			error, p, sockfd;
     hints.ai_socktype = SOCK_DGRAM; 
     
     error = getaddrinfo(bindhost, listenport, &hints, &res);
-	if ( error) {
+	if (error) {
         fprintf(stderr, "getaddrinfo error: [%s]\n", gai_strerror(error));
-        syslog(LOG_ERR, "getaddrinfo error: [%s]\n", gai_strerror(error));
+        LogError("getaddrinfo error: [%s]", gai_strerror(error));
         return -1;
     }
 
@@ -123,10 +123,10 @@ int 			error, p, sockfd;
 
             if (bind(sockfd, res->ai_addr, res->ai_addrlen) == 0) {
 				if ( res->ai_family == AF_INET ) 
-        			syslog(LOG_DEBUG, "Bound to IPv4 host/IP: %s, Port: %s", 
+        			LogInfo("Bound to IPv4 host/IP: %s, Port: %s", 
 						bindhost == NULL ? "any" : bindhost, listenport);
 				if ( res->ai_family == AF_INET6 ) 
-        			syslog(LOG_DEBUG, "Bound to IPv6 host/IP: %s, Port: %s", 
+        			LogInfo("Bound to IPv6 host/IP: %s, Port: %s", 
 						bindhost == NULL ? "any" : bindhost, listenport);
 
 				// we are done
@@ -142,8 +142,8 @@ int 			error, p, sockfd;
     
     if (sockfd < 0) {
         freeaddrinfo(ressave);
-        fprintf(stderr, "Receive socket error: could not open the requested socket\n");
-        syslog(LOG_ERR, "Receive socket error: could not open the requested socket\n");
+        fprintf(stderr, "Could not open the requested socket: %s\n", strerror (errno));
+        LogError("Receive socket error: could not open the requested socket", strerror (errno));
         return -1;
     }
 
@@ -154,19 +154,19 @@ int 			error, p, sockfd;
 	if ( sockbuflen ) {
 		if ( sockbuflen < Min_SOCKBUFF_LEN ) {
 			sockbuflen = Min_SOCKBUFF_LEN;
-			syslog(LOG_INFO,"I want at least %i bytes as socket buffer", sockbuflen);
+			LogInfo("I want at least %i bytes as socket buffer", sockbuflen);
 		}
 		optlen = sizeof(p);
 		getsockopt(sockfd,SOL_SOCKET,SO_RCVBUF,&p,&optlen);
-		syslog(LOG_INFO,"Standard setsockopt, SO_RCVBUF is %i Requested length is %i bytes",p, sockbuflen);
+		LogInfo("Standard setsockopt, SO_RCVBUF is %i Requested length is %i bytes",p, sockbuflen);
 		if ((setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &sockbuflen, sizeof(sockbuflen)) != 0) ) {
 			fprintf (stderr, "setsockopt(SO_RCVBUF,%d): %s\n", sockbuflen, strerror (errno));
-			syslog (LOG_ERR, "setsockopt(SO_RCVBUF,%d): %s", sockbuflen, strerror (errno));
+			LogError("setsockopt(SO_RCVBUF,%d): %s", sockbuflen, strerror (errno));
 			close(sockfd);
 			return -1;
 		} else {
 			getsockopt(sockfd,SOL_SOCKET,SO_RCVBUF,&p,&optlen);
-			syslog(LOG_INFO,"System set setsockopt, SO_RCVBUF to %d bytes", p);
+			LogInfo("System set setsockopt, SO_RCVBUF to %d bytes", p);
 		}
 	} 
 
@@ -183,7 +183,7 @@ socklen_t optlen;
 
 	if ( !hostname || !sendport ) {
         fprintf(stderr, "hostname and listen port required!\n");
-        syslog(LOG_ERR, "hostname and listen port required!\n");
+        LogError("hostname and listen port required!");
 		return -1;
 	}
 
@@ -224,7 +224,7 @@ socklen_t optlen;
     if (sockfd < 0) {
         freeaddrinfo(ressave);
         fprintf(stderr, "Send socket error: could not open the requested socket: %s\n", strerror (errno));
-        syslog(LOG_ERR, "Send socket error: could not open the requested socket: %s\n", strerror (errno));
+        LogError("Send socket error: could not open the requested socket: %s", strerror (errno));
         return -1;
     }
 
@@ -261,7 +261,7 @@ int p, error, sockfd;
 
 	if ( !listenport ) {
         fprintf(stderr, "listen port required!\n");
-        syslog(LOG_ERR, "listen port required!\n");
+        LogError("listen port required!");
 		return -1;
 	}
 
@@ -273,7 +273,7 @@ int p, error, sockfd;
 
     if ( error ) {
         fprintf(stderr, "getaddrinfo error:: [%s]\n", gai_strerror(error));
-        syslog(LOG_ERR, "getaddrinfo error:: [%s]\n", gai_strerror(error));
+        LogError("getaddrinfo error:: [%s]", gai_strerror(error));
         return -1;
     }
 
@@ -299,7 +299,7 @@ int p, error, sockfd;
 	if ( sockfd < 0 ) {
 		// nothing found - bye bye
 		fprintf(stderr, "Could not create a socket for [%s:%s]\n", hostname, listenport);
-        syslog(LOG_ERR, "Could not create a socket for [%s:%s]\n", hostname, listenport);
+        LogError("Could not create a socket for [%s:%s]", hostname, listenport);
 		freeaddrinfo(ressave);
 		return -1;
 	}
@@ -307,7 +307,7 @@ int p, error, sockfd;
 
 	if ( isMulticast((struct sockaddr_storage *)res->ai_addr) < 0 ) {
 		fprintf(stderr, "Not a multicast address [%s]\n", hostname);
-        syslog(LOG_ERR, "Not a multicast address [%s]\n", hostname);
+        LogError("Not a multicast address [%s]", hostname);
 		freeaddrinfo(ressave);
 		return -1;
 	}
@@ -318,7 +318,7 @@ int p, error, sockfd;
 	sockfd = socket(res->ai_family, SOCK_DGRAM, 0);
 	if (bind(sockfd, res->ai_addr, res->ai_addrlen) < 0) {
 		fprintf(stderr, "bind: %s\n", strerror (errno));
-        syslog(LOG_ERR, "bind: %s\n", strerror (errno));
+        LogError("bind: %s", strerror (errno));
 		close(sockfd);
 		freeaddrinfo(ressave);
 		return -1;
@@ -331,9 +331,9 @@ int p, error, sockfd;
 	}
 
 	if ( res->ai_family == AF_INET ) 
-   		syslog(LOG_DEBUG, "Joined IPv4 multicast group: %s Port: %s", hostname, listenport);
+   		LogInfo("Joined IPv4 multicast group: %s Port: %s", hostname, listenport);
 	if ( res->ai_family == AF_INET6 ) 
-   		syslog(LOG_DEBUG, "Joined IPv6 multicat group: %s Port: %s", hostname, listenport);
+   		LogInfo( "Joined IPv6 multicat group: %s Port: %s", hostname, listenport);
 
 
     freeaddrinfo(ressave);
@@ -341,19 +341,19 @@ int p, error, sockfd;
 	if ( sockbuflen ) {
 		if ( sockbuflen < Min_SOCKBUFF_LEN ) {
 			sockbuflen = Min_SOCKBUFF_LEN;
-			syslog(LOG_INFO,"I want at least %i bytes as socket buffer", sockbuflen);
+			LogInfo("I want at least %i bytes as socket buffer", sockbuflen);
 		}
 		optlen = sizeof(p);
 		getsockopt(sockfd,SOL_SOCKET,SO_RCVBUF,&p,&optlen);
-		syslog(LOG_INFO,"Standard setsockopt, SO_RCVBUF is %i Requested length is %i bytes",p, sockbuflen);
+		LogInfo("Standard setsockopt, SO_RCVBUF is %i Requested length is %i bytes",p, sockbuflen);
 		if ((setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, &sockbuflen, sizeof(sockbuflen)) != 0) ) {
 			fprintf (stderr, "setsockopt(SO_RCVBUF,%d): %s\n", sockbuflen, strerror (errno));
-			syslog (LOG_ERR, "setsockopt(SO_RCVBUF,%d): %s", sockbuflen, strerror (errno));
+			LogError("setsockopt(SO_RCVBUF,%d): %s", sockbuflen, strerror (errno));
 			close(sockfd);
 			return -1;
 		} else {
 			getsockopt(sockfd,SOL_SOCKET,SO_RCVBUF,&p,&optlen);
-			syslog(LOG_INFO,"System set setsockopt, SO_RCVBUF to %d bytes", p);
+			LogInfo("System set setsockopt, SO_RCVBUF to %d bytes", p);
 		}
 	} 
 
@@ -368,7 +368,7 @@ int error, sockfd;
 
 	if ( !listenport || !hostname ) {
         fprintf(stderr, "hostname and listen port required!\n");
-        syslog(LOG_ERR, "hostname and listen port required!\n");
+        LogError("hostname and listen port required!");
 		return -1;
 	}
 
@@ -380,7 +380,7 @@ int error, sockfd;
 
     if ( error ) {
         fprintf(stderr, "getaddrinfo error:: [%s]\n", gai_strerror(error));
-        syslog(LOG_ERR, "getaddrinfo error:: [%s]\n", gai_strerror(error));
+        LogError("getaddrinfo error:: [%s]", gai_strerror(error));
         return -1;
     }
 
@@ -406,14 +406,14 @@ int error, sockfd;
 	if ( sockfd < 0 ) {
 		// nothing found - bye bye
 		fprintf(stderr, "Could not create a socket for [%s:%s]\n", hostname, listenport);
-        syslog(LOG_ERR, "Could not create a socket for [%s:%s]\n", hostname, listenport);
+        LogError("Could not create a socket for [%s:%s]", hostname, listenport);
 		freeaddrinfo(ressave);
 		return -1;
 	}
 
 	if ( isMulticast((struct sockaddr_storage *)res->ai_addr) < 0 ) {
 		fprintf(stderr, "Not a multicast address [%s]\n", hostname);
-        syslog(LOG_ERR, "Not a multicast address [%s]\n", hostname);
+        LogError("Not a multicast address [%s]", hostname);
 		freeaddrinfo(ressave);
 		return -1;
 	}
@@ -471,7 +471,7 @@ int ret, err;
 			err = setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (const void *)&mreq, sizeof(mreq));
 			if ( err ) {
 				fprintf(stderr, "setsockopt IP_ADD_MEMBERSHIP: %s\n", strerror (errno));
-        		syslog(LOG_ERR, "setsockopt IP_ADD_MEMBERSHIP: %s\n", strerror (errno));
+        		LogError("setsockopt IP_ADD_MEMBERSHIP: %s", strerror (errno));
 				break;
 			}
 			ret = 0;
@@ -480,13 +480,13 @@ int ret, err;
 			err = setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_LOOP, &loopBack, sizeof(loopBack));
 			if ( err ) {
 				fprintf(stderr, "setsockopt IP_MULTICAST_LOOP: %s\n", strerror (errno));
-        		syslog(LOG_ERR, "setsockopt IP_MULTICAST_LOOP: %s\n", strerror (errno));
+        		LogError("setsockopt IP_MULTICAST_LOOP: %s", strerror (errno));
 			}
 
 			err = setsockopt(sockfd, IPPROTO_IP, IP_MULTICAST_TTL, &mcastTTL, sizeof(mcastTTL));
 			if ( err ) {
 				fprintf(stderr, "setsockopt IP_MULTICAST_LOOP: %s\n", strerror (errno));
-        		syslog(LOG_ERR, "setsockopt IP_MULTICAST_LOOP: %s\n", strerror (errno));
+        		LogError("setsockopt IP_MULTICAST_LOOP: %s", strerror (errno));
 			}
 */
 		} break;
@@ -500,7 +500,7 @@ int ret, err;
 			err = setsockopt(sockfd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6, sizeof(mreq6));
 			if ( err ) {
 				fprintf(stderr, "setsockopt IPV6_JOIN_GROUP: %s\n", strerror (errno));
-        		syslog(LOG_ERR, "setsockopt IPV6_JOIN_GROUP: %s\n", strerror (errno));
+        		LogError("setsockopt IPV6_JOIN_GROUP: %s", strerror (errno));
 				break;
 			}
 			ret = 0;
@@ -509,13 +509,13 @@ int ret, err;
 			err = setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &loopBack, sizeof(loopBack));
 			if ( err ) {
 				fprintf(stderr, "setsockopt IPV6_MULTICAST_LOOP: %s\n", strerror (errno));
-        		syslog(LOG_ERR, "setsockopt IPV6_MULTICAST_LOOP: %s\n", strerror (errno));
+        		LogError("setsockopt IPV6_MULTICAST_LOOP: %s", strerror (errno));
 			}
 
 			err = setsockopt(sockfd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &mcastTTL, sizeof(mcastTTL));
 			if ( err ) {
 				fprintf(stderr, "setsockopt IPV6_MULTICAST_HOPS: %s\n", strerror (errno));
-        		syslog(LOG_ERR, "setsockopt IPV6_MULTICAST_HOPS: %s\n", strerror (errno));
+        		LogError("setsockopt IPV6_MULTICAST_HOPS: %s", strerror (errno));
 			}
 */
 		} break;

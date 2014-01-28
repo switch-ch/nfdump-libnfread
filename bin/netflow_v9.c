@@ -299,7 +299,7 @@ static struct v9_element_map_s {
 	// NSEL common
 	{ NF_F_EVENT_TIME_MSEC,		"ASA event time",		_8bytes, _8bytes, TimeMsec, nop, COMMON_BLOCK },
 	{ NF_F_CONN_ID, 	 		"ASA conn ID",			_4bytes, _4bytes, move32, zero32, EX_NSEL_COMMON },
-	{ NF_F_FW_EVENT84, 		 	"ASA event 84",			_1byte,  _1byte,  move8,  zero8,  EX_NSEL_COMMON },
+	{ NF_F_FW_EVENT_84, 	 	"ASA 8.4 event",			_1byte,  _1byte,  move8,  zero8,  EX_NSEL_COMMON },
 	{ NF_F_FW_EVENT, 		 	"ASA event",			_1byte,  _1byte,  move8,  zero8,  EX_NSEL_COMMON },
 	{ NF_F_FW_EXT_EVENT, 		"ASA ext event",		_2bytes, _2bytes, move16, zero16, EX_NSEL_COMMON },
 	{ NF_F_ICMP_TYPE, 			"ASA ICMP type",		_1byte, _1byte,  move8,  zero8,  EX_NSEL_COMMON },
@@ -310,10 +310,15 @@ static struct v9_element_map_s {
 	// XlATE extensions
 	{ NF_F_XLATE_SRC_ADDR_IPV4, "ASA V4 xsrc addr",		_4bytes,  _4bytes,  move32,  zero32,  EX_NSEL_XLATE_IP_v4 },
 	{ NF_F_XLATE_DST_ADDR_IPV4, "ASA V4 xdst addr",		_4bytes,  _4bytes,  move32,  zero32,  EX_NSEL_XLATE_IP_v4 },
-//	{ NF_F_XLATE_SRC_ADDR_IPV6, "ASA V6 xsrc addr",		_16bytes, _16bytes, move128, zero128, EX_NSEL_XLATE_IP_v6 },
-//	{ NF_F_XLATE_DST_ADDR_IPV6, "ASA V6 xdst addr",		_16bytes, _16bytes, move128, zero128, EX_NSEL_XLATE_IP_v6 },
+	{ NF_F_XLATE_SRC_ADDR_IPV6, "ASA V6 xsrc addr",		_16bytes, _16bytes, move128, zero128, EX_NSEL_XLATE_IP_v6 },
+	{ NF_F_XLATE_DST_ADDR_IPV6, "ASA V6 xdst addr",		_16bytes, _16bytes, move128, zero128, EX_NSEL_XLATE_IP_v6 },
 	{ NF_F_XLATE_SRC_PORT, 		"ASA xsrc port",		_2bytes,  _2bytes,  move16,  zero16,  EX_NSEL_XLATE_PORTS },
 	{ NF_F_XLATE_DST_PORT, 		"ASA xdst port",		_2bytes,  _2bytes,  move16,  zero16,  EX_NSEL_XLATE_PORTS },
+	// ASA 8.4 mapping
+	{ NF_F_XLATE_SRC_ADDR_84, 	"ASA V4 xsrc addr",		_4bytes,  _4bytes,  move32,  zero32,  EX_NSEL_XLATE_IP_v4 },
+	{ NF_F_XLATE_DST_ADDR_84, 	"ASA V4 xdst addr",		_4bytes,  _4bytes,  move32,  zero32,  EX_NSEL_XLATE_IP_v4 },
+	{ NF_F_XLATE_SRC_PORT_84, 	"ASA 8.4 xsrc port",	_2bytes,  _2bytes,  move16,  zero16,  EX_NSEL_XLATE_PORTS },
+	{ NF_F_XLATE_DST_PORT_84, 	"ASA 8.4 xdst port",	_2bytes,  _2bytes,  move16,  zero16,  EX_NSEL_XLATE_PORTS },
 	// ACL extension
 	{ NF_F_INGRESS_ACL_ID, 		"ASA ingress ACL",		_12bytes,  _12bytes, move96, zero96, EX_NSEL_ACL },
 	{ NF_F_EGRESS_ACL_ID, 		"ASA egress ACL",		_12bytes,  _12bytes, move96, zero96, EX_NSEL_ACL },
@@ -332,12 +337,13 @@ static struct v9_element_map_s {
 	// NEL COMMON extension
 	{ NF_F_EVENT_TIME_MSEC,			"NEL event time",		_8bytes, _8bytes, TimeMsec, nop, 	COMMON_BLOCK },
 	{ NF_N_NAT_EVENT, 		 		"NEL NAT event",		_1byte,  _1byte,  move8,  	zero8,  EX_NEL_COMMON },
-	{ NF_N_POST_NAPT_SRC_PORT,		"NEL xsrc port",		_2bytes, _2bytes, move16,  	zero16, EX_NEL_COMMON },
-	{ NF_N_POST_NAPT_DST_PORT, 		"NEL xdst port",		_2bytes, _2bytes, move16,  	zero16, EX_NEL_COMMON },
+//	{ NF_N_POST_NAPT_SRC_PORT,		"NEL xsrc port",		_2bytes, _2bytes, move16,  	zero16, EX_NEL_COMMON },
+//	{ NF_N_POST_NAPT_DST_PORT, 		"NEL xdst port",		_2bytes, _2bytes, move16,  	zero16, EX_NEL_COMMON },
 	{ NF_N_INGRESS_VRFID, 	 		"NEL ingress VRFID",	_4bytes, _4bytes, move32, 	zero32, EX_NEL_COMMON },
+
 	// NEL GLOBAL IP extensions
-	{ NF_N_NAT_INSIDE_GLOBAL_IPV4, 	"NEL V4 inside IP",		_4bytes,  _4bytes,  move32,  zero32,  EX_NEL_GLOBAL_IP_v4 },
-	{ NF_N_NAT_OUTSIDE_GLOBAL_IPV4, "NEL V4 outside IP",	_4bytes,  _4bytes,  move32,  zero32,  EX_NEL_GLOBAL_IP_v4 },
+//	{ NF_N_NAT_INSIDE_GLOBAL_IPV4, 	"NEL V4 inside IP",		_4bytes,  _4bytes,  move32,  zero32,  EX_NEL_GLOBAL_IP_v4 },
+//	{ NF_N_NAT_OUTSIDE_GLOBAL_IPV4, "NEL V4 outside IP",	_4bytes,  _4bytes,  move32,  zero32,  EX_NEL_GLOBAL_IP_v4 },
 //	{ NF_N_NAT_INSIDE_GLOBAL_IPV6,	"NEL V6 inside IP",		_16bytes, _16bytes, move128, zero128, EX_NEL_GLOBAL_IP_v6 },
 //	{ NF_N_NAT_OUTSIDE_GLOBAL_IPV6, "NEL V6 outside IP",	_16bytes, _16bytes, move128, zero128, EX_NEL_GLOBAL_IP_v6 },
 
@@ -776,7 +782,7 @@ size_t				size_required;
 	SetFlag(table->flags, FLAG_BYTES_64);
 
 #if defined NSEL || defined NEL
-	if ( cache.lookup_info[NF_F_FW_EVENT].found || cache.lookup_info[NF_F_FW_EVENT84].found || 
+	if ( cache.lookup_info[NF_F_FW_EVENT].found || cache.lookup_info[NF_F_FW_EVENT_84].found || 
 		 cache.lookup_info[NF_N_NAT_EVENT].found) {
 		SetFlag(table->flags, FLAG_EVENT);
 	}
@@ -981,20 +987,30 @@ size_t				size_required;
 					PushSequence( table, NF_F_ICMP_TYPE, &offset, NULL);
 #endif
 				}
-				cache.lookup_info[NF_F_FW_EVENT84].found ?
-					PushSequence( table, NF_F_FW_EVENT84, &offset, NULL) :
+				cache.lookup_info[NF_F_FW_EVENT_84].found ?
+					PushSequence( table, NF_F_FW_EVENT_84, &offset, NULL) :
 					PushSequence( table, NF_F_FW_EVENT, &offset, NULL);
 				offset += 1;
 				PushSequence( table, NF_F_FW_EXT_EVENT, &offset, NULL);
 				offset += 2;
 				break;
 			case EX_NSEL_XLATE_PORTS:
-				PushSequence( table, NF_F_XLATE_SRC_PORT, &offset, NULL);
-				PushSequence( table, NF_F_XLATE_DST_PORT, &offset, NULL);
+				if ( cache.lookup_info[NF_F_XLATE_SRC_ADDR_84].found ) {
+					PushSequence( table, NF_F_XLATE_SRC_PORT_84, &offset, NULL);
+					PushSequence( table, NF_F_XLATE_DST_PORT_84, &offset, NULL);
+				} else {
+					PushSequence( table, NF_F_XLATE_SRC_PORT, &offset, NULL);
+					PushSequence( table, NF_F_XLATE_DST_PORT, &offset, NULL);
+				}
 				break;
 			case EX_NSEL_XLATE_IP_v4:
-				PushSequence( table, NF_F_XLATE_SRC_ADDR_IPV4, &offset, NULL);
-				PushSequence( table, NF_F_XLATE_DST_ADDR_IPV4, &offset, NULL);
+				if ( cache.lookup_info[NF_F_XLATE_SRC_ADDR_84].found ) {
+					PushSequence( table, NF_F_XLATE_SRC_ADDR_84, &offset, NULL);
+					PushSequence( table, NF_F_XLATE_DST_ADDR_84, &offset, NULL);
+				} else {
+					PushSequence( table, NF_F_XLATE_SRC_ADDR_IPV4, &offset, NULL);
+					PushSequence( table, NF_F_XLATE_DST_ADDR_IPV4, &offset, NULL);
+				}
 				break;
 /* not yet implemeted by CISCO
 			case EX_NSEL_XLATE_IP_v6:
@@ -1013,20 +1029,14 @@ size_t				size_required;
 			case EX_NEL_COMMON:
 				PushSequence( table, NF_N_NAT_EVENT, &offset, NULL);
 				offset += 3;
-				PushSequence( table, NF_N_POST_NAPT_SRC_PORT, &offset, NULL);
-				PushSequence( table, NF_N_POST_NAPT_DST_PORT, &offset, NULL);
-				PushSequence( table, NF_N_INGRESS_VRFID, &offset, NULL);
+// XXX				PushSequence( table, NF_N_POST_NAPT_SRC_PORT, &offset, NULL);
+// XXX				PushSequence( table, NF_N_POST_NAPT_DST_PORT, &offset, NULL);
+// XXX				PushSequence( table, NF_N_INGRESS_VRFID, &offset, NULL);
 				break;
 			case EX_NEL_GLOBAL_IP_v4:
-				PushSequence( table, NF_N_NAT_INSIDE_GLOBAL_IPV4, &offset, NULL);
-				PushSequence( table, NF_N_NAT_OUTSIDE_GLOBAL_IPV4, &offset, NULL);
+// XXX				PushSequence( table, NF_N_NAT_INSIDE_GLOBAL_IPV4, &offset, NULL);
+// XXX				PushSequence( table, NF_N_NAT_OUTSIDE_GLOBAL_IPV4, &offset, NULL);
 				break;
-/* not yet implemeted by CISCO
-			case EX_NEL_GLOBAL_IP_v6:
-				PushSequence( table, NF_N_NAT_INSIDE_GLOBAL_IPV6, &offset, NULL);
-				PushSequence( table, NF_N_NAT_OUTSIDE_GLOBAL_IPV6, &offset, NULL);
-				break;
-*/
 		}
 		extension_map->size += sizeof(uint16_t);
 		extension_map->extension_size += extension_descriptor[map_index].size;

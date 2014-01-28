@@ -197,6 +197,7 @@ uint64_t total_bytes;
 	// is expanded into this record
 	Engine->nfrecord = (uint64_t *)&master_record;
 
+	total_bytes = 0;
 	done	 	= 0;
 	while ( !done ) {
 
@@ -310,8 +311,8 @@ struct stat stat_buff;
 char *wfile, *rfile, *Rfile, *Mdirs, *ffile, *filter, *timeslot, *DBdir;
 char datestr[64];
 char pidfile[MAXPATHLEN];
-int c, ffd, ret, DBinit, AddDB, GenStat, AvStat, output_mode;
-unsigned int lastupdate, topN;
+int c, ffd, ret, DBinit, AddDB, GenStat, AvStat, output_mode, topN;
+unsigned int lastupdate;
 data_row *port_table;
 time_t	when;
 struct tm * t1;

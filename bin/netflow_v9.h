@@ -257,26 +257,30 @@ typedef struct common_header_s {
 #define NF_F_ICMP_CODE_IPV6           179
 #define NF_F_FWD_FLOW_DELTA_BYTES	  231
 #define NF_F_REV_FLOW_DELTA_BYTES	  232
-#define NF_F_FW_EVENT84			  	  233
 #define NF_F_EVENT_TIME_MSEC          323
 #define NF_F_INGRESS_ACL_ID         33000
 #define NF_F_EGRESS_ACL_ID          33001
 #define NF_F_FW_EXT_EVENT           33002
 #define NF_F_USERNAME               40000
-#define NF_F_XLATE_SRC_ADDR_IPV4    40001
-#define NF_F_XLATE_DST_ADDR_IPV4    40002
-#define NF_F_XLATE_SRC_PORT         40003
-#define NF_F_XLATE_DST_PORT         40004
-#define NF_F_FW_EVENT               40005
+
+#define NF_F_XLATE_SRC_ADDR_IPV4	  225
+#define NF_F_XLATE_DST_ADDR_IPV4	  226
+#define NF_F_XLATE_SRC_PORT			  227
+#define NF_F_XLATE_DST_PORT			  228
+#define NF_F_XLATE_SRC_ADDR_IPV6	  281
+#define NF_F_XLATE_DST_ADDR_IPV6	  282
+#define NF_F_FW_EVENT				  233
+
+// ASA 8.4 compat elements
+#define NF_F_XLATE_SRC_ADDR_84		40001
+#define NF_F_XLATE_DST_ADDR_84		40002
+#define NF_F_XLATE_SRC_PORT_84      40003
+#define NF_F_XLATE_DST_PORT_84      40004
+#define NF_F_FW_EVENT_84            40005
 
 // Cisco ASR 1000 series NEL extension - Nat Event Logging
 #define NF_N_NAT_EVENT					230
 #define NF_N_INGRESS_VRFID				234
-#define NF_N_NAT_INSIDE_GLOBAL_IPV4		225
-#define NF_N_NAT_OUTSIDE_GLOBAL_IPV4	226
-#define NF_N_POST_NAPT_SRC_PORT			227
-#define NF_N_POST_NAPT_DST_PORT			228
-
 
 // nprobe latency extensions
 #define NF9_NPROBE_CLIENT_NW_DELAY_SEC	57554

@@ -128,9 +128,9 @@ extension_descriptor_t extension_descriptor[] = {
 
 	// NAT - Network Event Logging
 	{ EX_NEL_COMMON,		12,	31, 0,		"NEL Common block"},
-	{ EX_NEL_GLOBAL_IP_v4,  8,	32, 0,    	"NEL xlate IPv4 addr"},
-	{ EX_NEL_GLOBAL_IP_v6, 32,	32, 0,    	"NEL xlate IPv6 addr"},
-	{ EX_NEL_RESERVED,		0,	0, 0,		NULL},
+	{ EX_NEL_GLOBAL_IP_v4,  0,	0, 0,    	"Compat NEL IPv4"},
+	{ EX_NEL_RESERVED_1,  	0,	0, 0,    	NULL},
+	{ EX_NEL_RESERVED_2,	0,	0, 0,		NULL},
 
 	// last entry
 	{ 0,	0,	0, 0,	NULL }
@@ -403,8 +403,9 @@ char *p, *q, *s;
 			extension_descriptor[EX_NSEL_USER_MAX].enabled	  = 1;
 		} else if ( strcmp(p, "nel") == 0 ) {
 			extension_descriptor[EX_NEL_COMMON].enabled		  = 1;
-			extension_descriptor[EX_NEL_GLOBAL_IP_v4].enabled = 1;
-			extension_descriptor[EX_NEL_GLOBAL_IP_v6].enabled = 1;
+			extension_descriptor[EX_NSEL_XLATE_PORTS].enabled = 1;
+			extension_descriptor[EX_NSEL_XLATE_IP_v4].enabled = 1;
+			extension_descriptor[EX_NSEL_XLATE_IP_v6].enabled = 1;
 		} else {
 			switch ( *p ) {
 				case '\0':
@@ -574,6 +575,8 @@ uint64_t total_bytes;
 		return;
 	}
 
+	total_bytes	   = 0;
+	skipped_blocks = 0;
 	done = 0;
 	while ( !done ) {
 	int i, ret;

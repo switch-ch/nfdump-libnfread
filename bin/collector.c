@@ -389,11 +389,11 @@ int				err;
 	inet_ntop(ss->ss_family, ptr, ident, sizeof(ident));
 	ident[99] = '\0';
 	dbg_printf("Dynamic Flow Source IP: %s\n", ident);
-	
+
 	if ( strchr(ident, ':') ) { // condense IPv6 addresses
 		condense_v6(ident);
 	}
-	
+
 	s = ident;
 	while ( *s != '\0' ) {
 		if ( *s == '.' || *s == ':' ) 

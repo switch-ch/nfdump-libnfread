@@ -355,6 +355,7 @@ srecord_t	*commbuff;
 
 	// init vars
 	commbuff = (srecord_t *)shmem;
+	string = NULL;
 
 	// Init each netflow source output data buffer
 	fs = FlowSource;
@@ -363,7 +364,6 @@ srecord_t	*commbuff;
 		// prepare file
 		fs->nffile = OpenNewFile(fs->current, NULL, compress, 0, NULL);
 		if ( !fs->nffile ) {
-			syslog(LOG_ERR, "%s", string);
 			return;
 		}
 		if ( do_xstat ) {
@@ -420,7 +420,7 @@ srecord_t	*commbuff;
 			}
 
 			if ( peer.hostname ) {
-				size_t len;
+				ssize_t len;
 				len = sendto(peer.sockfd, in_buff, cnt, 0, (struct sockaddr *)&(peer.addr), peer.addrlen);
 				if ( len < 0 ) {
 					syslog(LOG_ERR, "ERROR: sendto(): %s", strerror(errno));

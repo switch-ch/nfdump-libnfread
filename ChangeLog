@@ -1,4 +1,9 @@
-2013-06-15 v1.6.10p1
+2013-11-13 v1.6.11
+- Add ASA/NSEL 9.x protcol changes
+- Make it llvm compilable
+ 
+2013-08-12 v1.6.10p1
+- Fix -t +/- n timeslot option
 - Fix bug in nfanon - stat record update.
 - Fix bug in netflow v5 mudule: extension map size wrong.
 - Fix bug nfexport: In some cases could result in wrong flow counter. 

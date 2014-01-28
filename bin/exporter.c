@@ -27,9 +27,9 @@
  *  
  *  $Author: peter $
  *
- *  $Id: exporter.c 196 2013-05-06 18:29:05Z peter $
+ *  $Id: exporter.c 219 2013-10-27 19:23:26Z peter $
  *
- *  $LastChangedRevision: 196 $
+ *  $LastChangedRevision: 219 $
  *	
  */
 
@@ -301,6 +301,8 @@ uint64_t total_bytes;
 		return;
 	}
 
+	total_bytes	   = 0;
+	skipped_blocks = 0;
 	done = 0;
 	while ( !done ) {
 	int i, ret;

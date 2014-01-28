@@ -1107,10 +1107,8 @@ void *p;
 	ret = check_filter_block("ingress ACL 0xaabbcc", &flow_record, 1);
 	flow_record.fw_event = 255;
 
-#endif
 
 	// NEL/NAT related tests
-#ifdef NEL
 	flow_record.nat_event = NEL_EVENT_INVALID;
 	ret = check_filter_block("nat event invalid", &flow_record, 1);
 	ret = check_filter_block("nat event add", &flow_record, 0);
@@ -1128,8 +1126,8 @@ void *p;
 	ret = check_filter_block("ingress vrf 0xAAAA", &flow_record, 1);
 	ret = check_filter_block("ingress vrf 100", &flow_record, 0);
 
-	flow_record.post_src_port = 1023;
-	flow_record.post_dst_port = 32798;
+	flow_record.xlate_src_port = 1023;
+	flow_record.xlate_dst_port = 32798;
 	ret = check_filter_block("src nport 1023", &flow_record, 1);
 	ret = check_filter_block("dst nport 32798", &flow_record, 1);
 	ret = check_filter_block("src nport > 1022", &flow_record, 1);
@@ -1140,15 +1138,15 @@ void *p;
 	ret = check_filter_block("dst nport gt 32798", &flow_record, 0);
 	ret = check_filter_block("src nport 1022", &flow_record, 0);
 	ret = check_filter_block("dst nport 32797", &flow_record, 0);
-	flow_record.post_src_port = 0xffff;
-	flow_record.post_dst_port = 0xffff;
+	flow_record.xlate_src_port = 0xffff;
+	flow_record.xlate_dst_port = 0xffff;
 
-	flow_record.nat_inside.v6[0] = 0;
-	flow_record.nat_inside.v6[1] = 0;
-	flow_record.nat_inside.v4 = 0xac200710;
-	flow_record.nat_outside.v6[0] = 0;
-	flow_record.nat_outside.v6[1] = 0;
-	flow_record.nat_outside.v4 = 0x0a0a0a0b;
+	flow_record.xlate_src_ip.v6[0] = 0;
+	flow_record.xlate_src_ip.v6[1] = 0;
+	flow_record.xlate_src_ip.v4 = 0xac200710;
+	flow_record.xlate_dst_ip.v6[0] = 0;
+	flow_record.xlate_dst_ip.v6[1] = 0;
+	flow_record.xlate_dst_ip.v4 = 0x0a0a0a0b;
 	ret = check_filter_block("src nip 172.32.7.16", &flow_record, 1);
 	ret = check_filter_block("src nip 172.32.7.15", &flow_record, 0);
 	ret = check_filter_block("dst nip 10.10.10.11", &flow_record, 1);
@@ -1158,17 +1156,17 @@ void *p;
 	ret = check_filter_block("nip 172.32.7.15", &flow_record, 0);
 	ret = check_filter_block("nip 10.10.10.12", &flow_record, 0);
 
-	inet_pton(PF_INET6, "fe80::2110:abcd:1235:ffff", flow_record.nat_inside.v6);
-	flow_record.nat_inside.v6[0] = ntohll(flow_record.nat_inside.v6[0]);
-	flow_record.nat_inside.v6[1] = ntohll(flow_record.nat_inside.v6[1]);
+	inet_pton(PF_INET6, "fe80::2110:abcd:1235:ffff", flow_record.xlate_src_ip.v6);
+	flow_record.xlate_src_ip.v6[0] = ntohll(flow_record.xlate_src_ip.v6[0]);
+	flow_record.xlate_src_ip.v6[1] = ntohll(flow_record.xlate_src_ip.v6[1]);
 	ret = check_filter_block("src nip fe80::2110:abcd:1235:ffff", &flow_record, 1);
 	ret = check_filter_block("src nip fe80::2110:abcd:1235:fffe", &flow_record, 0);
 
-	flow_record.nat_inside.v6[0] = 0;
-	flow_record.nat_inside.v6[1] = 0;
-	inet_pton(PF_INET6, "fe80::2110:abcd:1235:fffe", flow_record.nat_outside.v6);
-	flow_record.nat_outside.v6[0] = ntohll(flow_record.nat_outside.v6[0]);
-	flow_record.nat_outside.v6[1] = ntohll(flow_record.nat_outside.v6[1]);
+	flow_record.xlate_src_ip.v6[0] = 0;
+	flow_record.xlate_src_ip.v6[1] = 0;
+	inet_pton(PF_INET6, "fe80::2110:abcd:1235:fffe", flow_record.xlate_dst_ip.v6);
+	flow_record.xlate_dst_ip.v6[0] = ntohll(flow_record.xlate_dst_ip.v6[0]);
+	flow_record.xlate_dst_ip.v6[1] = ntohll(flow_record.xlate_dst_ip.v6[1]);
 	ret = check_filter_block("dst nip fe80::2110:abcd:1235:fffe", &flow_record, 1);
 	ret = check_filter_block("dst nip fe80::2110:abcd:1235:fffc", &flow_record, 0);
 

@@ -451,7 +451,7 @@ srecord_t	*commbuff;
 			}
 
 			if ( peer.hostname ) {
-				size_t len;
+				ssize_t len;
 				len = sendto(peer.sockfd, in_buff, cnt, 0, (struct sockaddr *)&(peer.addr), peer.addrlen);
 				if ( len < 0 ) {
 					LogError("ERROR: sendto(): %s", strerror(errno));

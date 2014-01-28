@@ -192,13 +192,7 @@ extern generic_exporter_t **exporter_list;
 #ifdef NSEL
 #	define DefaultMode "nsel"
 #else 
-
-#ifdef NEL
-#	define DefaultMode "nel"
-#else
 #	define DefaultMode "line"
-#endif
-
 #endif
 
 /* The appropriate header line is compiled automatically.
@@ -232,10 +226,9 @@ printmap_t printmap[] = {
 	{ "bilong", 	format_special,      		FORMAT_bilong 	},
 	{ "pipe", 		flow_record_to_pipe,      	NULL 			},
 	{ "csv", 		flow_record_to_csv,      	NULL 			},
+	{ "null", 		flow_record_to_null,      	NULL 			},
 #ifdef NSEL
 	{ "nsel",		format_special, 			FORMAT_nsel		},
-#endif
-#ifdef NEL
 	{ "nel",		format_special, 			FORMAT_nel		},
 #endif
 
@@ -322,7 +315,8 @@ static void usage(char *name) {
 static void PrintSummary(stat_record_t *stat_record, int plain_numbers, int csv_output) {
 static double	duration;
 uint64_t	bps, pps, bpp;
-char 		byte_str[32], packet_str[32], bps_str[32], pps_str[32], bpp_str[32];
+char 		byte_str[NUMBER_STRING_SIZE], packet_str[NUMBER_STRING_SIZE];
+char 		bps_str[NUMBER_STRING_SIZE], pps_str[NUMBER_STRING_SIZE], bpp_str[NUMBER_STRING_SIZE];
 
 	bps = pps = bpp = 0;
 	if ( stat_record->last_seen ) {
@@ -350,11 +344,11 @@ char 		byte_str[32], packet_str[32], bps_str[32], pps_str[32], bpp_str[32];
 			(long long unsigned)stat_record->numpackets, (long long unsigned)bps, 
 			(long long unsigned)pps, (long long unsigned)bpp );
 	} else {
-		format_number(stat_record->numbytes, byte_str, VAR_LENGTH);
-		format_number(stat_record->numpackets, packet_str, VAR_LENGTH);
-		format_number(bps, bps_str, VAR_LENGTH);
-		format_number(pps, pps_str, VAR_LENGTH);
-		format_number(bpp, bpp_str, VAR_LENGTH);
+		format_number(stat_record->numbytes, byte_str, DONT_SCALE_NUMBER, VAR_LENGTH);
+		format_number(stat_record->numpackets, packet_str, DONT_SCALE_NUMBER, VAR_LENGTH);
+		format_number(bps, bps_str, DONT_SCALE_NUMBER, VAR_LENGTH);
+		format_number(pps, pps_str, DONT_SCALE_NUMBER, VAR_LENGTH);
+		format_number(bpp, bpp_str, DONT_SCALE_NUMBER, VAR_LENGTH);
 		printf("Summary: total flows: %llu, total bytes: %s, total packets: %s, avg bps: %s, avg pps: %s, avg bpp: %s\n",
 		(unsigned long long)stat_record->numflows, byte_str, packet_str, bps_str, pps_str, bpp_str );
 	}
@@ -842,10 +836,7 @@ char 		Ident[IDENTLEN];
 				e1 = "";
 				e2 = "";
 #ifdef NSEL
-				e1 = "NSEL-";
-#endif
-#ifdef NEL
-				e2 = "NEL-";
+				e1 = "NSEL-NEL";
 #endif
 				printf("%s: Version: %s%s%s\n",argv[0], e1, e2, nfdump_version);
 				exit(0);
@@ -1214,7 +1205,7 @@ char 		Ident[IDENTLEN];
 	} 
 
 	if (element_stat) {
-		PrintElementStat(&sum_stat, record_header, print_record, topN, do_tag, quiet, pipe_output, csv_output);
+		PrintElementStat(&sum_stat, plain_numbers, record_header, print_record, topN, do_tag, quiet, pipe_output, csv_output);
 	} 
 
 	if ( !quiet ) {

@@ -74,7 +74,7 @@ static int	format_index		= 0;
 
 static int		do_tag 		 = 0;
 static int 		long_v6 	 = 0;
-static int		no_scale	 = 0;
+static int		scale	 	 = 1;
 static double	duration;
 
 #define STRINGSIZE 10240
@@ -82,11 +82,6 @@ static double	duration;
 
 static char header_string[STRINGSIZE];
 static char data_string[STRINGSIZE];
-
-static const double _1KB = 1000.0;
-static const double _1MB = 1000.0 * 1000.0;
-static const double _1GB = 1000.0 * 1000.0 * 1000.0;
-static const double _1TB = 1000.0 * 1000.0 * 1000.0 * 1000.0;
 
 // tag 
 static char tag_string[2];
@@ -253,24 +248,9 @@ static void String_xlateDstAddrPort(master_record_t *r, char *string);
 
 static void String_userName(master_record_t *r, char *string);
 
-#endif
-
-#ifdef NEL
 static void String_nevt(master_record_t *r, char *string);
 
 static void String_vrf(master_record_t *r, char *string);
-
-static void String_natSrcAddr(master_record_t *r, char *string);
-
-static void String_natDstAddr(master_record_t *r, char *string);
-
-static void String_natSrcPort(master_record_t *r, char *string);
-
-static void String_natDstPort(master_record_t *r, char *string);
-
-static void String_natSrcAddrPort(master_record_t *r, char *string);
-
-static void String_natDstAddrPort(master_record_t *r, char *string);
 
 #endif
 
@@ -353,24 +333,23 @@ static struct format_token_list_s {
 	{ "%iacl",  0, "Ingress ACL                     ", String_iacl}, 	// NSEL ingress ACL
 	{ "%eacl",  0, "Egress ACL                      ", String_eacl}, 	// NSEL egress ACL
 	{ "%xsa",   0, "   X-late Src IP", 		String_xlateSrcAddr},		// NSEL XLATE src IP
-	{ "%xda",   0, "  X-late Dest IP", 		String_xlateDstAddr},		// NSEL XLATE dst IP
+	{ "%xda",   0, "   X-late Dst IP", 		String_xlateDstAddr},		// NSEL XLATE dst IP
 	{ "%xsp",   0, "XsPort", 				String_xlateSrcPort},		// NSEL XLATE src port
 	{ "%xdp",   0, "XdPort", 				String_xlateDstPort},		// NSEL SLATE dst port
 	{ "%xsap", 1, "   X-Src IP Addr:Port ",	String_xlateSrcAddrPort },	// Xlate Source Address:Port
 	{ "%xdap", 1, "   X-Dst IP Addr:Port ", String_xlateDstAddrPort },	// Xlate Destination Address:Port
 	{ "%uname", 0, "UserName", 				String_userName},			// NSEL user name
 
-#endif
-
-#ifdef NEL
+// NEL
+// for v.1.6.10 compatibility, keep NEL specific addr/port format tokens 
 	{ "%nevt",   0, " Event", 				  String_nevt },			// NEL event
 	{ "%vrf",    0, "    VRF-ID", 			  String_vrf },				// NEL vrf ID
-	{ "%nsa",    0, "      Src NAT IP", 	  String_natSrcAddr},		// NSEL XLATE src IP
-	{ "%nda",    0, "      Dst NAT IP", 	  String_natDstAddr},		// NSEL XLATE dst IP
-	{ "%nsp",    0, "NsPort", 				  String_natSrcPort},		// NSEL XLATE src port
-	{ "%ndp",    0, "NdPort", 				  String_natDstPort},		// NSEL SLATE dst port
-	{ "%nsap",   1, " Src NAT IP Addr:Port ", String_natSrcAddrPort },	// Xlate Source Address:Port
-	{ "%ndap",   1, " Dst NAT IP Addr:Port ", String_natDstAddrPort },	// Xlate Destination Address:Port
+	{ "%nsa",    0, "   X-late Src IP", 	  String_xlateSrcAddr},		// NEL XLATE src IP
+	{ "%nda",    0, "   X-late Dst IP", 	  String_xlateDstAddr},		// NEL XLATE dst IP
+	{ "%nsp",    0, "XsPort", 				  String_xlateSrcPort},		// NEL XLATE src port
+	{ "%ndp",    0, "XdPort", 				  String_xlateDstPort},		// NEL SLATE dst port
+	{ "%nsap",   1, "   X-Src IP Addr:Port ", String_xlateSrcAddrPort },// NEL Xlate Source Address:Port
+	{ "%ndap",   1, "   X-Dst IP Addr:Port ", String_xlateDstAddrPort },// NEL Xlate Destination Address:Port
 #endif
 
 	// nprobe latency
@@ -602,12 +581,9 @@ int Getv6Mode(void) {
 	return long_v6;
 } 
 
-#ifdef __SUNPRO_C
-extern
-#endif
-inline void Proto_string(uint8_t protonum, char *protostr) {
+void Proto_string(uint8_t protonum, char *protostr) {
 
-	if ( protonum >= NumProtos || no_scale ) {
+	if ( protonum >= NumProtos || !scale ) {
 		snprintf(protostr,16,"%-5i", protonum );
 	} else {
 		strncpy(protostr, protolist[protonum], 16);
@@ -1100,10 +1076,23 @@ extension_map_t	*extension_map = r->map_ref;
 				_s = data_string + _slen;
 				slen = STRINGSIZE - _slen;
 				} break;
+			case EX_NEL_COMMON: {
+				char *event = "UNKNOWN";
+				if ( r->nat_event <= 2 ) {
+					event = NEL_event_string[r->nat_event];
+				}
+				snprintf(_s, slen-1,
+"  nat event    =             %5u: %s\n"
+"  ingress VRF  =        %10u\n"
+, r->nat_event, event, r->ingress_vrfid);
+				_slen = strlen(data_string);
+				_s = data_string + _slen;
+				slen = STRINGSIZE - _slen;
+				} break;
 			case EX_NSEL_XLATE_PORTS: {
 				snprintf(_s, slen-1,
-"  src asa port =             %5u\n"
-"  dst asa port =             %5u\n"
+"  src xlt port =             %5u\n"
+"  dst xlt port =             %5u\n"
 , r->xlate_src_port, r->xlate_dst_port );
 				_slen = strlen(data_string);
 				_s = data_string + _slen;
@@ -1121,8 +1110,8 @@ extension_map_t	*extension_map = r->map_ref;
 				ds[IP_STRING_LEN-1] = 0;
 
 				snprintf(_s, slen-1,
-"  src asa ip   =  %16s\n"
-"  dst asa ip   =  %16s\n"
+"  src xlt ip   =  %16s\n"
+"  dst xlt ip   =  %16s\n"
 , as, ds);
 				_slen = strlen(data_string);
 				_s = data_string + _slen;
@@ -1145,8 +1134,8 @@ extension_map_t	*extension_map = r->map_ref;
 				ds[IP_STRING_LEN-1] = 0;
 
 				snprintf(_s, slen-1,
-"  src asa ip   =  %16s\n"
-"  dst asa ip   =  %16s\n"
+"  src xlate ip =  %16s\n"
+"  dst xlate ip =  %16s\n"
 , as, ds);
 				_slen = strlen(data_string);
 				_s = data_string + _slen;
@@ -1171,66 +1160,6 @@ extension_map_t	*extension_map = r->map_ref;
 				_s = data_string + _slen;
 				slen = STRINGSIZE - _slen;
 				break;
-#endif
-#ifdef NEL
-			case EX_NEL_COMMON: {
-				char *event = "UNKNOWN";
-				if ( r->nat_event <= 2 ) {
-					event = NEL_event_string[r->nat_event];
-				}
-				snprintf(_s, slen-1,
-"  nat event    =             %5u: %s\n"
-"  src nat port =             %5u\n"
-"  dst nat port =             %5u\n"
-"  ingress VRF  =        %10u\n"
-, r->nat_event, event, r->post_src_port, r->post_dst_port, r->ingress_vrfid);
-				_slen = strlen(data_string);
-				_s = data_string + _slen;
-				slen = STRINGSIZE - _slen;
-				} break;
-			case EX_NEL_GLOBAL_IP_v4:
-				as[0] = 0;
-				ds[0] = 0;
-				r->nat_inside.v4 = htonl(r->nat_inside.v4);
-				r->nat_outside.v4 = htonl(r->nat_outside.v4);
-				inet_ntop(AF_INET, &r->nat_inside.v4, as, sizeof(as));
-				inet_ntop(AF_INET, &r->nat_outside.v4, ds, sizeof(ds));
-				as[IP_STRING_LEN-1] = 0;
-				ds[IP_STRING_LEN-1] = 0;
-
-				snprintf(_s, slen-1,
-"  src nat ip   =  %16s\n"
-"  dst nat ip   =  %16s\n"
-, as, ds);
-				_slen = strlen(data_string);
-				_s = data_string + _slen;
-				slen = STRINGSIZE - _slen;
-			break;
-			case EX_NEL_GLOBAL_IP_v6:
-				as[0] = 0;
-				ds[0] = 0;
-				r->nat_inside.v6[0] = htonll(r->nat_inside.v6[0]);
-				r->nat_inside.v6[1] = htonll(r->nat_inside.v6[1]);
-				r->nat_outside.v6[0] = htonll(r->nat_outside.v6[0]);
-				r->nat_outside.v6[1] = htonll(r->nat_outside.v6[1]);
-				inet_ntop(AF_INET6, &r->nat_inside.v6, as, sizeof(as));
-				inet_ntop(AF_INET6, &r->nat_outside.v6, ds, sizeof(ds));
-				if ( ! long_v6 ) {
-					condense_v6(as);
-					condense_v6(ds);
-				}
-				as[IP_STRING_LEN-1] = 0;
-				ds[IP_STRING_LEN-1] = 0;
-
-				snprintf(_s, slen-1,
-"  src nat ip   =  %16s\n"
-"  dst nat ip =  %16s\n"
-, as, ds);
-				_slen = strlen(data_string);
-				_s = data_string + _slen;
-				slen = STRINGSIZE - _slen;
-			break;
-
 #endif
 			default:
 				snprintf(_s, slen-1, "Type %u not implemented\n", id);
@@ -1605,6 +1534,10 @@ master_record_t *r = (master_record_t *)record;
 
 } // End of flow_record_to_csv
 
+void flow_record_to_null(void *record, char ** s, int tag) {
+	// empty - do not list any flows
+} // End of flow_record_to_null
+
 void format_special(void *record, char ** s, int tag) {
 master_record_t *r 		  = (master_record_t *)record;
 int	i, index;
@@ -1737,7 +1670,7 @@ int ParseOutputFormat(char *format, int plain_numbers, printmap_t *printmap) {
 char *c, *s, *h;
 int	i, remaining;
 
-	no_scale = plain_numbers;
+	scale = plain_numbers == 0;
 
 	InitFormatParser();
 	
@@ -1815,42 +1748,7 @@ int	i, remaining;
 
 } // End of ParseOutputFormat
 
-#ifdef __SUNPRO_C
-extern
-#endif
-inline void format_number(uint64_t num, char *s, int fixed_width) {
-double f = num;
-
-	if ( no_scale ) {
-		snprintf(s, 31, "%llu", (long long unsigned)num);
-	} else {
-
-		if ( f >= _1TB ) {
-			if ( fixed_width ) 
-				snprintf(s, 31, "%5.1f T", f / _1TB );
-			else 
-				snprintf(s, 31, "%.1f T", f / _1TB );
-		} else if ( f >= _1GB ) {
-			if ( fixed_width ) 
-				snprintf(s, 31, "%5.1f G", f / _1GB );
-			else 
-				snprintf(s, 31, "%.1f G", f / _1GB );
-		} else if ( f >= _1MB ) {
-			if ( fixed_width ) 
-				snprintf(s, 31, "%5.1f M", f / _1MB );
-			else 
-				snprintf(s, 31, "%.1f M", f / _1MB );
-		} else  {
-			if ( fixed_width ) 
-				snprintf(s, 31, "%4.0f", f );
-			else 
-				snprintf(s, 31, "%.0f", f );
-		} 
-	}
-
-} // End of format_number
-
-inline void condense_v6(char *s) {
+void condense_v6(char *s) {
 size_t len = strlen(s);
 char	*p, *q;
 
@@ -2306,36 +2204,36 @@ static void String_Output(master_record_t *r, char *string) {
 } // End of String_Output
 
 static void String_InPackets(master_record_t *r, char *string) {
-char s[32];
+char s[NUMBER_STRING_SIZE];
 
-	format_number(r->dPkts, s, FIXED_WIDTH);
+	format_number(r->dPkts, s, scale, FIXED_WIDTH);
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%8s", s);
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_InPackets
 
 static void String_OutPackets(master_record_t *r, char *string) {
-char s[32];
+char s[NUMBER_STRING_SIZE];
 
-	format_number(r->out_pkts, s, FIXED_WIDTH);
+	format_number(r->out_pkts, s, scale, FIXED_WIDTH);
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%8s", s);
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_OutPackets
 
 static void String_InBytes(master_record_t *r, char *string) {
-char s[32];
+char s[NUMBER_STRING_SIZE];
 
-	format_number(r->dOctets, s, FIXED_WIDTH);
+	format_number(r->dOctets, s, scale, FIXED_WIDTH);
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%8s", s);
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_InBytes
 
 static void String_OutBytes(master_record_t *r, char *string) {
-char s[32];
+char s[NUMBER_STRING_SIZE];
 
-	format_number(r->out_bytes, s, FIXED_WIDTH);
+	format_number(r->out_bytes, s, scale, FIXED_WIDTH);
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%8s", s);
 	string[MAX_STRING_LENGTH-1] = '\0';
 
@@ -2611,14 +2509,14 @@ double latency;
 
 static void String_bps(master_record_t *r, char *string) {
 uint64_t	bps;
-char s[32];
+char s[NUMBER_STRING_SIZE];
 
 	if ( duration ) {
 		bps = (( r->dOctets << 3 ) / duration);	// bits per second. ( >> 3 ) -> * 8 to convert octets into bits
 	} else {
 		bps = 0;
 	}
-	format_number(bps, s, FIXED_WIDTH);
+	format_number(bps, s, scale, FIXED_WIDTH);
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%8s", s);
 	string[MAX_STRING_LENGTH-1] = '\0';
 
@@ -2626,14 +2524,14 @@ char s[32];
 
 static void String_pps(master_record_t *r, char *string) {
 uint64_t	pps;
-char s[32];
+char s[NUMBER_STRING_SIZE];
 
 	if ( duration ) {
 		pps = r->dPkts / duration;				// packets per second
 	} else {
 		pps = 0;
 	}
-	format_number(pps, s, FIXED_WIDTH);
+	format_number(pps, s, scale, FIXED_WIDTH);
 	snprintf(string, MAX_STRING_LENGTH-1 ,"%8s", s);
 	string[MAX_STRING_LENGTH-1] = '\0';
 
@@ -2855,7 +2753,6 @@ char 	tmp_str[IP_STRING_LEN], portchar;
 
 static void String_xlateDstAddrPort(master_record_t *r, char *string) {
 char 	tmp_str[IP_STRING_LEN], portchar;
-char 	icmp_port[MAX_STRING_LENGTH];
 
 	tmp_str[0] = 0;
 	if ( (r->xlate_flags & 1 ) != 0 ) { // IPv6
@@ -2877,12 +2774,11 @@ char 	icmp_port[MAX_STRING_LENGTH];
 		portchar = ':';
 	}
 	tmp_str[IP_STRING_LEN-1] = 0;
-	ICMP_Port_decode(r, icmp_port);
 
 	if ( long_v6 ) 
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5i", tag_string, tmp_str, portchar, r->xlate_dst_port);
 	else
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
+		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5i", tag_string, tmp_str, portchar, r->xlate_dst_port);
 
 	string[MAX_STRING_LENGTH-1] = 0;
 
@@ -2900,9 +2796,6 @@ static void String_userName(master_record_t *r, char *string) {
 
 } // End of String_userName
 
-#endif
-
-#ifdef NEL
 static void String_nevt(master_record_t *r, char *string) {
 
 	switch(r->nat_event) {
@@ -2927,144 +2820,5 @@ static void String_vrf(master_record_t *r, char *string) {
 	string[MAX_STRING_LENGTH-1] = '\0';
 
 } // End of String_nfc
-
-static void String_natSrcAddr(master_record_t *r, char *string) {
-char tmp_str[IP_STRING_LEN];
-
-	tmp_str[0] = 0;
-	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
-		uint64_t	ip[2];
-
-		ip[0] = htonll(r->nat_inside.v6[0]);
-		ip[1] = htonll(r->nat_inside.v6[1]);
-		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
-		if ( ! long_v6 ) {
-			condense_v6(tmp_str);
-		}
-	} else {	// IPv4
-		uint32_t	ip;
-		ip = htonl(r->nat_inside.v4);
-		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
-	}
-	tmp_str[IP_STRING_LEN-1] = 0;
-	if ( long_v6 ) 
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s", tag_string, tmp_str);
-	else
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s", tag_string, tmp_str);
-
-	string[MAX_STRING_LENGTH-1] = 0;
-
-} // End of String_natSrcAddr
-
-static void String_natDstAddr(master_record_t *r, char *string) {
-char tmp_str[IP_STRING_LEN];
-
-	tmp_str[0] = 0;
-	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
-		uint64_t	ip[2];
-
-		ip[0] = htonll(r->nat_outside.v6[0]);
-		ip[1] = htonll(r->nat_outside.v6[1]);
-		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
-		if ( ! long_v6 ) {
-			condense_v6(tmp_str);
-		}
-	} else {	// IPv4
-		uint32_t	ip;
-		ip = htonl(r->nat_outside.v4);
-		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
-	}
-	tmp_str[IP_STRING_LEN-1] = 0;
-	if ( long_v6 ) 
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s", tag_string, tmp_str);
-	else
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s", tag_string, tmp_str);
-
-	string[MAX_STRING_LENGTH-1] = 0;
-
-} // End of String_natDstAddr
-
-static void String_natSrcPort(master_record_t *r, char *string) {
-
-	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->post_src_port);
-	string[MAX_STRING_LENGTH-1] = '\0';
-
-} // End of String_natSrcPort
-
-static void String_natDstPort(master_record_t *r, char *string) {
-
-	snprintf(string, MAX_STRING_LENGTH-1 ,"%6u", r->post_dst_port);
-	string[MAX_STRING_LENGTH-1] = '\0';
-
-} // End of String_natDstPort
-
-static void String_natSrcAddrPort(master_record_t *r, char *string) {
-char 	tmp_str[IP_STRING_LEN], portchar;
-
-	tmp_str[0] = 0;
-	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
-		uint64_t	ip[2];
-
-		ip[0] = htonll(r->nat_inside.v6[0]);
-		ip[1] = htonll(r->nat_inside.v6[1]);
-		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
-		if ( ! long_v6 ) {
-			condense_v6(tmp_str);
-		}
-
-		portchar = '.';
-	} else {	// IPv4
-		uint32_t	ip;
-		ip = htonl(r->nat_inside.v4);
-		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
-
-		portchar = ':';
-	}
-	tmp_str[IP_STRING_LEN-1] = 0;
-
-	if ( long_v6 ) 
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5i", tag_string, tmp_str, portchar, r->post_src_port);
-	else
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5i", tag_string, tmp_str, portchar, r->post_src_port);
-
-	string[MAX_STRING_LENGTH-1] = 0;
-
-} // End of String_natSrcAddrPort
-
-static void String_natDstAddrPort(master_record_t *r, char *string) {
-char 	tmp_str[IP_STRING_LEN], portchar;
-char 	icmp_port[MAX_STRING_LENGTH];
-
-	tmp_str[0] = 0;
-	if ( (r->nat_flags & 1 ) != 0 ) { // IPv6
-		uint64_t	ip[2];
-
-		ip[0] = htonll(r->nat_outside.v6[0]);
-		ip[1] = htonll(r->nat_outside.v6[1]);
-		inet_ntop(AF_INET6, ip, tmp_str, sizeof(tmp_str));
-		if ( ! long_v6 ) {
-			condense_v6(tmp_str);
-		}
-
-		portchar = '.';
-	} else {	// IPv4
-		uint32_t	ip;
-		ip = htonl(r->nat_outside.v4);
-		inet_ntop(AF_INET, &ip, tmp_str, sizeof(tmp_str));
-
-		portchar = ':';
-	}
-	tmp_str[IP_STRING_LEN-1] = 0;
-	ICMP_Port_decode(r, icmp_port);
-
-	if ( long_v6 ) 
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%39s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
-	else
-		snprintf(string, MAX_STRING_LENGTH-1, "%s%16s%c%-5s", tag_string, tmp_str, portchar, icmp_port);
-
-	string[MAX_STRING_LENGTH-1] = 0;
-
-
-} // End of String_natDstAddrPort
 
 #endif
